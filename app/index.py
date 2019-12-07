@@ -6,6 +6,7 @@ import datetime
 import json
 import os
 import pprint
+import re
 import subprocess
 import sys
 
@@ -146,7 +147,7 @@ def get_config():
                             host['ignore'] = True
                         elif field[:1].isdigit():
                             host['lease'] = field
-                        elif field.isalnum():
+                        elif re.fullmatch('[a-zA-Z][-_a-zA-Z0-9]*', field):
                             host['name'] = field
                         else:
                             extra_list.append(field)
