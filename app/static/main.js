@@ -385,7 +385,7 @@ $(function () {
             delete host.changed;
             delete host.appended;
         }
-        tag_click.addClass("disabled");
+        $('.save-hosts').addClass("disabled");
     });
     $(document).on('change', '.edit-host', on_change);
     $(document).on('keydown', 'textarea', on_keydown);
