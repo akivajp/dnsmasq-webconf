@@ -1,9 +1,8 @@
 // global variables
-var system_hosts;
-var leases;
-var config;
-var hide_commented;
-//var edit_log = [];
+var system_hosts = [];
+var leases = [];
+var config = {};
+var hide_commented = false;
 
 function compare(a, b) {
     if (a < b) { return -1; }
@@ -46,6 +45,19 @@ function modify_hosts(hosts, cond, apply) {
 }
 
 $(function () {
+    function increment_num_lines() {
+        if (! config) {
+            config = {};
+            config.hosts = [];
+            config.ignored_hosts = [];
+        }
+        if (! config.num_lines) {
+            config.num_lines = 0;
+        }
+        config.num_lines++;
+        return config.num_lines;
+    }
+
     function add_static (e) {
         var tag_click = $(e.currentTarget);
         var num = tag_click.data('num');
@@ -56,26 +68,36 @@ $(function () {
             addr: host.addr,
             mac: [host.mac],
             extra: [],
+            comment: host.name,
             name: host.name,
             changed: true,
+            appended: true,
+            line_num: increment_num_lines(),
         };
         config.hosts.push(new_host);
-        $('#save').removeClass('disabled');
+        $('.save-hosts').removeClass('disabled');
         update_hosts('dhcp-hosts');
         tag_click.remove();
     }
     function add_ignore(e) {
         var tag_click = $(e.currentTarget);
-        //update_hosts('dhcp-hosts');
-        //var host = {
-        //    commented: false,
-        //    valid: true,
-        //    num: config.hosts.length + 1,
-        //};
-        //config.hosts.push(host);
-        //update_hosts('dhcp-hosts');
+        console.log("ignore");
+        var num = tag_click.data('num');
+        var host = leases[num-1];
+        var new_host = {
+            num: config.ignored_hosts.length + 1,
+            valid: true,
+            mac: [host.mac],
+            comment: host.name,
+            changed: true,
+            appended: true,
+            ignore: true,
+            line_num: increment_num_lines(),
+        };
+        config.ignored_hosts.push(new_host);
+        $('.save-hosts').removeClass('disabled');
+        update_hosts('ignored-hosts');
         tag_click.remove();
-        $('#save').removeClass('disabled');
     }
     function delete_host(e) {
         var tag_click = $(e.currentTarget);
@@ -87,20 +109,17 @@ $(function () {
         };
         if (response) {
             modify_hosts(config.hosts, {line_num:line_num}, change);
+            modify_hosts(config.ignored_hosts, {line_num:line_num}, change);
         }
         update_hosts('dhcp-hosts');
-        $('#save').removeClass('disabled');
+        update_hosts('ignored-hosts');
+        $('.save-hosts').removeClass('disabled');
     }
     function on_change(e) {
         var tag_change = $(e.currentTarget);
-        //var num = tag_change.data('num');
         var line_num = tag_change.data('line_num');
-        console.log(line_num);
         var key = tag_change.data('key');
         var val = tag_change.val();
-        //console.log(key);
-        //console.log(val);
-        //console.log(tag_change.prop("tagName"));
         if (tag_change.prop("tagName") == "TEXTAREA") {
             val = val.trim().split('\n');
         } else if (key == "valid") {
@@ -109,24 +128,15 @@ $(function () {
         var change = {};
         change[key] = val;
         change['changed'] = true;
-        //modify_hosts(config.hosts, {num:num}, change)
         modify_hosts(config.hosts, {line_num:line_num}, change)
-        //change.line = host.line;
-        //change.action = "change";
-        //change.line = line;
-        //change.key = key;
-        //change.value = val;
-        //edit_log.push(change);
-        //console.log(change);
-        $('#save').removeClass('disabled');
+        modify_hosts(config.ignored_hosts, {line_num:line_num}, change)
+        $('.save-hosts').removeClass('disabled');
         update_hosts('dhcp-hosts');
+        update_hosts('ignored-hosts');
         return false;
     }
     function on_keydown(e) {
         var target = $(e.currentTarget);
-        //console.log(target);
-        //console.log("keydown");
-        //console.log(e);
         //console.log(e.keyCode);
         switch(e.keyCode) {
             case 13: // enter
@@ -137,9 +147,8 @@ $(function () {
         return true;
     }
 
-    //function update_hosts(table_id, sort_key = null, ascend = true) {
     function update_hosts(table_id, sort_key = null, ascend = null) {
-        var hosts;
+        var hosts = [];
         var tag_table = $('#' + table_id);
         //console.log(hosts_table);
         var tag_thead = tag_table.find('thead');
@@ -147,11 +156,14 @@ $(function () {
         var tag_tbody = tag_table.find('tbody');
         //console.log(hosts_tbody);
         tag_tbody.empty();
-        switch (table_id) {
-            case 'dhcp-hosts': hosts = config.hosts; break;
-            case 'ignored-hosts': hosts = config.ignored_hosts; break;
-            case 'system-hosts': hosts = system_hosts; break;
-            case 'dhcp-leases': hosts = leases; break;
+        if (table_id == 'dhcp-hosts') {
+            if (config && config.hosts) { hosts = config.hosts; }
+        } else if (table_id == 'ignored-hosts') {
+            if (config && config.ignored_hosts) { hosts = config.ignored_hosts; } 
+        } else if (table_id == 'system-hosts') {
+            if (system_hosts) { hosts = system_hosts; }
+        } else if (table_id == 'dhcp-leases') {
+            if (leases) { hosts = leases; }
         }
         if (sort_key === null) {
             sort_key = tag_table.data('sort-key');
@@ -283,23 +295,32 @@ $(function () {
         hide_commented = checked;
         update_hosts('dhcp-hosts');
     });
-    $('#add-host').click(function (e) {
+    $('.add-host').click(function (e) {
         var tag_click = $(e.currentTarget);
-        //update_hosts('dhcp-hosts');
+        var table_id = tag_click.data('target');
         var host = {
             //commented: false,
             valid: true,
-            num: config.hosts.length + 1,
             mac: [],
             extra: [],
+            appended: true,
+            line_num: increment_num_lines(),
         };
-        config.hosts.push(host);
-        update_hosts('dhcp-hosts');
+        if (table_id == 'dhcp-hosts') {
+            host.num = config.hosts.length + 1;
+            config.hosts.push(host);
+        } else if (table_id == 'ignored-hosts') {
+            host.num = config.ignored_hosts.length + 1;
+            host.ignore = true;
+            config.ignored_hosts.push(host);
+        }
+        update_hosts(table_id);
     });
-    $('#save').click(function (e) {
+    $('.save-hosts').click(function (e) {
         var tag_click = $(e.currentTarget);
         var data = {
             hosts: config.hosts,
+            ignored_hosts: config.ignored_hosts,
         };
         $.ajax({
             type: "POST",
@@ -313,6 +334,7 @@ $(function () {
         });
         for (host of config.hosts) {
             delete host.changed;
+            delete host.appended;
         }
         tag_click.addClass("disabled");
     });

@@ -53,10 +53,18 @@ def get_hosts():
                 fields = line.split()
                 if len(fields) >= 2:
                     host = {}
+                    names = []
                     host['num'] = len(hosts) + 1
                     host['addr'] = fields[0]
-                    host['names'] = fields[1:]
-                    hosts.append(host)
+                    for field in fields[1:]:
+                        field = field.strip()
+                        if field.startswith('#'):
+                            # commented-out after "#""
+                            break
+                        names.append(field)
+                    host['names'] = names
+                    if names:
+                        hosts.append(host)
     return hosts
 
 def get_leases():
@@ -98,6 +106,7 @@ def get_config():
         for i, line in enumerate(fobj):
             #lines.append(line)
             line = line.strip()
+            config['num_lines'] = i + 1
             #dprint(line)
             commented = False
             if line[:1] == "#":
@@ -107,7 +116,12 @@ def get_config():
             #dprint(line)
             if line.startswith('dhcp-host='):
                 host = {}
-                fields = line[line.find('=')+1:].split(',')
+                remain = line[line.find('=')+1:]
+                if '#' in remain:
+                    pos = remain.find('#')
+                    host['comment'] = remain[pos+1:].strip()
+                    remain = remain[:pos]
+                fields = remain.split(',')
                 #dprint(fields)
                 mac_list = []
                 extra_list = []
@@ -138,7 +152,7 @@ def get_config():
                 if host:
                     host['line_num'] = i+1
                     host['line'] = line
-                    host['commented'] = commented
+                    #host['commented'] = commented
                     host['valid'] = not commented
                     host['mac'] = mac_list
                     host['extra'] = extra_list
@@ -199,6 +213,9 @@ def host_to_line(host):
     duration = host.get('lease', None)
     if duration:
         fields.append(duration)
+    ignore = host.get('ignore', None)
+    if ignore:
+        fields.append('ignore')
     head = ""
     delete = host.get('delete', False)
     valid = host.get('valid', True)
@@ -206,8 +223,11 @@ def host_to_line(host):
         head += '##'
     elif not valid or len(fields) == 1:
         head += '#'
+    comment = host.get('comment', '')
+    if comment:
+        comment = ' # ' + comment
     head += 'dhcp-host='
-    return head + str.join(', ', fields)
+    return head + str.join(', ', fields) + comment
 
 @route('/api/save', method=["GET", "POST"])
 def save():
@@ -217,21 +237,22 @@ def save():
         lines = open(config_file, 'r').readlines()
     else:
         lines = []
-    for host in data['hosts']:
+    for host in data['hosts'] + data['ignored_hosts']:
+        #dprint(host)
         line_num = host.get('line_num', None)
         #dprint(line_num)
         if host.get('changed', False):
-            if line_num is not None:
-                if 0 <= line_num and line_num < len(lines):
+            if host.get('appended', False):
+                lines.append(host_to_line(host) + "\n")
+            elif line_num is not None:
+                if 1 <= line_num and line_num <= len(lines):
                     line = lines[line_num-1]
                 else:
                     line = ""
-                #dprint(line)
-                #dprint(line.find(host['line']))
                 if line.find(host['line']) >= 0:
                     lines[line_num-1] = host_to_line(host) + "\n"
             else:
-                lines.append(host_to_line(host) + "\n")
+                raise RuntimeError("invalid path")
             dprint(host_to_line(host))
     with open(config_file, 'w') as fobj:
         fobj.writelines(lines)
