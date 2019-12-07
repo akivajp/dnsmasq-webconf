@@ -12,8 +12,14 @@ function compare(a, b) {
 
 function to_safe(val) {
     if (val === undefined) { return ""; }
-    //else if (typeof(val) == 'number') { return val; }
-    //else { return String(val); }
+    if (String(val).match(/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)) {
+        // IP Address-Like
+        var fields = [];
+        for (var field of String(val).split('.')) {
+            fields.push(field.padStart(3, '0'));
+        }
+        return fields.join('.');
+    }
     return val;
 }
 
