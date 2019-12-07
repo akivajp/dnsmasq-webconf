@@ -242,15 +242,22 @@ def save():
         line_num = host.get('line_num', None)
         #dprint(line_num)
         if host.get('changed', False):
+            dprint(host)
             if host.get('appended', False):
                 lines.append(host_to_line(host) + "\n")
+                dprint(lines[-1])
             elif line_num is not None:
+                check_line = host.get('line', '')
                 if 1 <= line_num and line_num <= len(lines):
-                    line = lines[line_num-1]
+                    file_line = lines[line_num-1]
                 else:
-                    line = ""
-                if line.find(host['line']) >= 0:
+                    file_line = ""
+                dprint(file_line)
+                dprint(check_line)
+                dprint(check_line in file_line)
+                if check_line in file_line:
                     lines[line_num-1] = host_to_line(host) + "\n"
+                    dprint(lines[line_num-1])
             else:
                 raise RuntimeError("invalid path")
             dprint(host_to_line(host))

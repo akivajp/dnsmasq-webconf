@@ -44,6 +44,33 @@ function modify_hosts(hosts, cond, apply) {
     }
 }
 
+function swap_field(host1, host2, key) {
+    var tmp;
+    tmp = host1[key];
+    host1[key] = host2[key];
+    host2[key] = tmp;
+}
+
+function swap_orders(hosts, num1, num2) {
+    if (num1 < 1 || hosts.length < num1) { return false; }
+    if (num2 < 1 || hosts.length < num2) { return false; }
+    var host1;
+    var host2;
+    for (var host of hosts) {
+        if (host.num == num1) {
+            host1 = host;
+        } else if (host.num == num2) {
+            host2 = host;
+        }
+    }
+    swap_field(host1, host2, 'appended');
+    swap_field(host1, host2, 'line');
+    swap_field(host1, host2, 'line_num');
+    swap_field(host1, host2, 'num');
+    host1.changed = true;
+    host2.changed = true;
+}
+
 $(function () {
     function increment_num_lines() {
         if (! config) {
@@ -146,6 +173,19 @@ $(function () {
         }
         return true;
     }
+    function move_host(e) {
+        var target = $(e.currentTarget);
+        var table_id = target.closest('table').attr('id');
+        var num = Number(target.data('num'));
+        var offset = Number(target.data('offset'));
+        if (table_id == 'dhcp-hosts') {
+            swap_orders(config.hosts, num, num+offset)
+        } else if (table_id == 'ignored-hosts') {
+            swap_orders(config.ignored_hosts, num, num+offset)
+        }
+        update_hosts(table_id, 'num', true);
+        $('.save-hosts').removeClass('disabled');
+    }
 
     function update_hosts(table_id, sort_key = null, ascend = null) {
         var hosts = [];
@@ -203,10 +243,19 @@ $(function () {
                     tag_td.append(button_add_static);
                     tag_td.append('&nbsp;');
                     tag_td.append(button_ignore);
-                } else if (key == 'delete') {
+                } else if (key == 'move') {
+                    tag_td.addClass('text-nowrap');
                     $('<a class="delete-host btn btn-danger text-white">Delete</a>')
                         .data('line_num', host.line_num)
                         .click(delete_host)
+                        .appendTo(tag_td);
+                    $('<a class="move btn btn-primary text-white" data-offset=-1>↑</a>')
+                        .data('num', host.num)
+                        .click(move_host)
+                        .appendTo(tag_td);
+                    $('<a class="move btn btn-primary text-white" data-offset=1>↓</a>')
+                        .data('num', host.num)
+                        .click(move_host)
                         .appendTo(tag_td);
                 } else if (Array.isArray(val)) {
                     //$('<td>').html(val.join('<br/>')).appendTo(tr);
