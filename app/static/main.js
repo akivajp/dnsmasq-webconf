@@ -90,6 +90,7 @@ $(function () {
         var num = tag_click.data('num');
         var host = leases[num-1];
         var new_host = {
+            line_num: increment_num_lines(),
             num: config.hosts.length + 1,
             valid: true,
             addr: host.addr,
@@ -99,7 +100,6 @@ $(function () {
             name: host.name,
             changed: true,
             appended: true,
-            line_num: increment_num_lines(),
         };
         config.hosts.push(new_host);
         $('.save-hosts').removeClass('disabled');
@@ -112,6 +112,7 @@ $(function () {
         var num = tag_click.data('num');
         var host = leases[num-1];
         var new_host = {
+            line_num: increment_num_lines(),
             num: config.ignored_hosts.length + 1,
             valid: true,
             mac: [host.mac],
@@ -119,7 +120,6 @@ $(function () {
             changed: true,
             appended: true,
             ignore: true,
-            line_num: increment_num_lines(),
         };
         config.ignored_hosts.push(new_host);
         $('.save-hosts').removeClass('disabled');
