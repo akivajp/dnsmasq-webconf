@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
+
+    <title>Dnsmasq Configurator</title>
+  </head>
+  <body>
+    <!-- Optional JavaScript -->
+    <!-- jQuery first, then Popper.js, then Bootstrap JS -->
+    <script src="http://code.jquery.com/jquery-3.4.1.js" integrity="sha256-WpOohJOqMqqyKL9FccASB9O0KwACQJpFTUBLTYOVvVU=" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.3/umd/popper.min.js" integrity="sha384-ZMP7rVo3mIykV+2+9J3UJ46jBk0WLaUAdn689aCwoqbBJiSnjAK/l8WvCWPIPm49" crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/js/bootstrap.min.js" integrity="sha384-ChfqqxuZUCnJSK3+MXmPNIyE6ZbWh2IMqE241rYiqJxyMiZ6OW/JmZQ5stwEULTy" crossorigin="anonymous"></script>
+    <script src="/static/main.js"></script>
+    <script>
+      var system_hosts = {{ hosts_json }};
+      var leases = {{ leases_json }};
+      var config = {{ config_json }};
+    </script>
+
+    <div class="container-fluid">
+      <nav class="navbar navbar-dark bg-primary">
+        <h1 class="h1 navbar-brand">Dnsmasq Configurator</h1>
+      </nav>
+    </div>
+
+    <div class="container-fluid my-2">
+      <div class="card">
+        <h2 class="h2 card-header">
+          Filters
+        </h2>
+        <div class="card-body">
+          <input type="checkbox" id="hide-commented">
+          <label for="hide-commented">Hide Hosts Commented-Out</label>
+        </div>
+      </div>
+    </div>
+
+    {% if config_json %}
+    <div class="container-fluid my-2">
+      <div class="card">
+        <h2 class="h2 card-header">
+            DHCP Hosts
+        </h2>
+        <div class="card-body">
+          <table id="dhcp-hosts" class="table table-bordered">
+            <thead>
+              <tr class="table-primary">
+                <th class="text-center"><a class="sort-button" data-editable="1" data-key="valid">Valid</a></th>
+                <th class="text-center"><a class="sort-button" data-key="num">#</a></th>
+                <th class="text-center"><a class="sort-button" data-editable="1" data-key="addr">IP Address</a></th>
+                <th class="text-center"><a class="sort-button" data-editable="1" data-key="name">Host Name</a></th>
+                <th class="text-center"><a class="sort-button" data-editable="1" data-key="mac">Mac Addresses</a></th>
+                <th class="text-center"><a class="sort-button" data-editable="1" data-key="lease">Lease Duration</a></th>
+                <th class="text-center"><a class="sort-button" data-editable="1" data-key="extra">Extra Fields</a></th>
+                <th class="text-center"><span data-key="delete">Delete</span></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <a id="add-host" class="btn btn-primary text-white">Add</a>
+          <a id="save" class="btn btn-primary text-white disabled">Save</a>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if leases_json %}
+    <div class="container-fluid my-2">
+        <div class="card">
+            <h2 class="h2 card-header">
+                DHCP Leases ({{ leases_file }})
+            </h2>
+            <div class="card-body">
+              <table id="dhcp-leases" class="table">
+                <thead>
+                  <tr class="table-primary">
+                    <th class="text-center"><a class="sort-button" data-key="num">#</a></th>
+                    <th class="text-center"><a class="sort-button" data-key="timestamp">Epoch</a></th>
+                    <th class="text-center"><a class="sort-button" data-key="mac">Mac Address</a></th>
+                    <th class="text-center"><a class="sort-button" data-key="addr">IP Address</a></th>
+                    <th class="text-center"><a class="sort-button" data-key="name">Host Name</a></th>
+                    <th class="text-center"><a class="sort-button" data-key="id">Client ID</a></th>
+                    <th class="text-center"><span data-key="control">Control</span></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if config_json %}
+    <div class="container-fluid my-2">
+        <div class="card">
+            <h2 class="h2 card-header">
+                Ignored Hosts
+            </h2>
+            <div class="card-body">
+              <table id="ignored-hosts" class="table">
+                <thead>
+                  <tr class="table-primary">
+                    <th class="text-center"><a class="sort-button" data-key="num">#</a></th>
+                    <th class="text-center"><a class="sort-button" data-key="name">Host Name</a></th>
+                    <th class="text-center"><a class="sort-button" data-key="mac">Mac Addresses</a></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if hosts_json %}
+    <div class="container-fluid my-2">
+        <div class="card">
+            <h2 class="h2 card-header">
+                System's hosts file ({{ hosts_file }})
+            </h2>
+            <div class="card-body">
+              <table id="system-hosts" class="table">
+                <thead>
+                  <tr class="table-primary">
+                    <th class="text-center"><a class="sort-button" data-key="num">#</a></th>
+                    <th class="text-center"><a class="sort-button" data-key="addr">IP Address</a></th>
+                    <th class="text-center"><a class="sort-button" data-key="names">Host Names</a></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+  </body>
+</html>
