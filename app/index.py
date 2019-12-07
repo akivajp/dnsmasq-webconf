@@ -6,6 +6,7 @@ import datetime
 import json
 import os
 import pprint
+import subprocess
 import sys
 
 import bottle
@@ -38,6 +39,7 @@ DEFAULT_CONFIG = '/etc/dnsmasq.conf'
 hosts_file = None
 leases_file = None
 config_file = None
+reload_command = None
 
 def get_hosts():
     if not hosts_file:
@@ -267,6 +269,8 @@ def save():
     result["status"] = "OK"
     response.headers['Content-Type'] = 'application/json'
     response.headers['Cache-Control'] = 'no-cache'
+    if reload_command:
+        subprocess.call(reload_command, shell=True)
     return json.dumps(result)
 
 dprint(__name__)
@@ -276,10 +280,12 @@ if __name__ == '__main__':
     parser.add_argument('--hosts', '-H', type=str, default=DEFAULT_HOSTS)
     parser.add_argument('--leases', '-L', type=str, default=DEFAULT_LEASES)
     parser.add_argument('--config', '-C', type=str, default=DEFAULT_CONFIG)
+    parser.add_argument('--reload-command', '--reload', '-R', type=str, default=None)
     args = parser.parse_args()
     dprint(args)
     if args.hosts:
         hosts_file = args.hosts
         leases_file = args.leases
         config_file = args.config
+        reload_command = args.reload_command
     bottle.run(host='0.0.0.0', port=args.port, quite=False, debug=True, reloader=True)
