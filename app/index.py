@@ -108,18 +108,18 @@ def get_config():
     with open(config_file) as fobj:
         for i, line in enumerate(fobj):
             #lines.append(line)
-            line = line.strip()
+            remain = line.strip()
             config['num_lines'] = i + 1
             #dprint(line)
             commented = False
-            if line[:1] == "#":
+            if remain[:1] == "#":
                 commented = True
-                line = line[1:].strip()
+                remain = remain[1:].strip()
             #dprint(commented)
             #dprint(line)
-            if line.startswith('dhcp-host='):
+            if remain.startswith('dhcp-host='):
                 host = {}
-                remain = line[line.find('=')+1:]
+                remain = remain[remain.find('=')+1:]
                 if '#' in remain:
                     pos = remain.find('#')
                     host['comment'] = remain[pos+1:].strip()
@@ -224,7 +224,7 @@ def host_to_line(host):
     valid = host.get('valid', True)
     if delete:
         head += '##'
-    elif not valid or len(fields) == 1:
+    elif not valid or len(fields) == 0:
         head += '#'
     comment = host.get('comment', '')
     if comment:
@@ -257,8 +257,10 @@ def save():
                     file_line = ""
                 dprint(file_line)
                 dprint(check_line)
-                dprint(check_line in file_line)
-                if check_line in file_line:
+                #dprint(check_line in file_line)
+                dprint(check_line == file_line)
+                #if check_line in file_line:
+                if check_line == file_line:
                     lines[line_num-1] = host_to_line(host) + "\n"
                     dprint(lines[line_num-1])
             else:
