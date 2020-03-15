@@ -3,7 +3,8 @@ var system_hosts = [];
 var leases = [];
 var config = {};
 var hide_commented = false;
-var mac_set = new Set();
+var config_mac_set = new Set();
+var leased_addr_set = new Set();
 
 function compare(a, b) {
     if (a < b) { return -1; }
@@ -241,7 +242,7 @@ $(function () {
                 var val = host[key];
                 var tag_td = $('<td class="text-center align-middle">').appendTo(tag_tr);
                 if (key == 'control') {
-                    if (! mac_set.has(host.mac)) {
+                    if (! config_mac_set.has(host.mac)) {
                         var button_add_static = $('<a class="add-static btn btn-primary text-white">Add Static</a>');
                         button_add_static.data('num', host.num);
                         button_add_static.click(add_static);
@@ -306,6 +307,11 @@ $(function () {
                         }
                     } else {
                         tag_td.text(val).appendTo(tag_tr);
+                        if (leased_addr_set.has(host.addr)) {
+                            if (table_id != 'dhcp-leases') {
+                                tag_td.addClass("table-success");
+                            }
+                        }
                     }
                 }
             });
@@ -389,8 +395,13 @@ $(function () {
     if (config.hosts) {
       for (var host of config.hosts) {
         for (var mac of host.mac) {
-          mac_set.add(mac);
+          config_mac_set.add(mac);
         }
+      }
+    }
+    if (leases) {
+      for (var host of leases) {
+        leased_addr_set.add(host.addr);
       }
     }
     update_hosts('dhcp-hosts');
