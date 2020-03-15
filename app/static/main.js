@@ -3,6 +3,7 @@ var system_hosts = [];
 var leases = [];
 var config = {};
 var hide_commented = false;
+var mac_set = new Set();
 
 function compare(a, b) {
     if (a < b) { return -1; }
@@ -240,15 +241,17 @@ $(function () {
                 var val = host[key];
                 var tag_td = $('<td class="text-center align-middle">').appendTo(tag_tr);
                 if (key == 'control') {
-                    var button_add_static = $('<a class="add-static btn btn-primary text-white">Add Static</a>');
-                    button_add_static.data('num', host.num);
-                    button_add_static.click(add_static);
-                    var button_ignore = $('<a class="add-ignore btn btn-danger text-white">Ignore</a>');
-                    button_ignore.data('num', host.num);
-                    button_ignore.click(add_ignore);
-                    tag_td.append(button_add_static);
-                    tag_td.append('&nbsp;');
-                    tag_td.append(button_ignore);
+                    if (! mac_set.has(host.mac)) {
+                        var button_add_static = $('<a class="add-static btn btn-primary text-white">Add Static</a>');
+                        button_add_static.data('num', host.num);
+                        button_add_static.click(add_static);
+                        var button_ignore = $('<a class="add-ignore btn btn-danger text-white">Ignore</a>');
+                        button_ignore.data('num', host.num);
+                        button_ignore.click(add_ignore);
+                        tag_td.append(button_add_static);
+                        tag_td.append('&nbsp;');
+                        tag_td.append(button_ignore);
+                    }
                 } else if (key == 'move') {
                     tag_td.addClass('text-nowrap');
                     $('<a class="delete-host btn btn-danger text-white">Delete</a>')
@@ -289,18 +292,6 @@ $(function () {
                             if (val) {
                                 tag_check.prop('checked', true);
                             }
-                            //tag_check.change(function (e) {
-                            //    var tag_check = $(e.currentTarget);
-                            //    var checked = tag_check.prop('checked');
-                            //    //var num = tag_check.data('num');
-                            //    var line = tag_check.data('line');
-                            //    var new_config = {
-                            //        valid: checked,
-                            //        commented: !checked,
-                            //    };
-                            //    modify_hosts(hosts, {line:line}, new_config);
-                            //    update_hosts(table_id, sort_key, ascend)
-                            //});
                         } else {
                             if (host.valid) {
                                 $('<input class="edit-host form-control">')
@@ -395,8 +386,16 @@ $(function () {
     });
     $(document).on('change', '.edit-host', on_change);
     $(document).on('keydown', 'textarea', on_keydown);
+    if (config.hosts) {
+      for (var host of config.hosts) {
+        for (var mac of host.mac) {
+          mac_set.add(mac);
+        }
+      }
+    }
     update_hosts('dhcp-hosts');
     update_hosts('ignored-hosts');
     update_hosts('system-hosts');
     update_hosts('dhcp-leases');
 });
+

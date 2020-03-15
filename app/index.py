@@ -174,6 +174,8 @@ def index():
     leases = get_leases()
     config = get_config()
     #dprint(config)
+    d = datetime.datetime.now()
+    timestamp = d.strftime("%y/%m/%d-%H:%M:%S")
     context = dict(
         #hosts = hosts,
         hosts_json = json.dumps(hosts),
@@ -181,6 +183,7 @@ def index():
         leases_json = json.dumps(leases),
         leases_file = leases_file,
         config_json = json.dumps(config),
+        timestamp = timestamp,
     )
     return template('main.html.j2', context)
 
