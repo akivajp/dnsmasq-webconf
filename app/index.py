@@ -19,11 +19,11 @@ from bottle import jinja2_template as template
 from bottle import TEMPLATE_PATH
 
 os.environ["DEBUG"] = "1"
-from lpu.common import logging
-logger = logging.getColorLogger(__name__)
+import logging
+logging.basicConfig(format="[%(levelname)s] %(asctime)s %(message)s", level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 def dprint(obj):
-    logger.debug_print(pprint.pformat(obj), offset=1)
-    #logger.debug_print(pprint.pformat(obj))
+    logger.debug(pprint.pformat(obj))
 
 #TEMPLATE_PATH.append("./views")
 dirpath = os.path.dirname(os.path.abspath(__file__))
