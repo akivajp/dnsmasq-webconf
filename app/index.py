@@ -25,12 +25,9 @@ logger = logging.getLogger(__name__)
 def dprint(obj):
     logger.debug(pprint.pformat(obj))
 
-#TEMPLATE_PATH.append("./views")
 dirpath = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(dirpath)
-#os.chdir(dirpath)
 TEMPLATE_PATH.append(os.path.join(dirpath, 'views'))
-#repodir = os.path.dirname(dirpath)
 static_dir = os.path.join(dirpath, 'static')
 
 DEFAULT_HOSTS = '/etc/hosts'
@@ -51,7 +48,6 @@ def get_hosts():
     with open(hosts_file) as fobj:
         for line in fobj:
             line = line.strip()
-            #dprint(line)
             if line and line[0] != '#':
                 fields = line.split()
                 if len(fields) >= 2:
@@ -62,7 +58,7 @@ def get_hosts():
                     for field in fields[1:]:
                         field = field.strip()
                         if field.startswith('#'):
-                            # commented-out after "#""
+                            # commented-out after "#"
                             break
                         names.append(field)
                     host['names'] = names
@@ -79,7 +75,6 @@ def get_leases():
     with open(leases_file) as fobj:
         for line in fobj:
             line = line.strip()
-            #dprint(line)
             fields = line.split()
             if len(fields) >= 5:
                 host = {}
@@ -103,20 +98,14 @@ def get_config():
     config = {}
     config['hosts'] = hosts = []
     config['ignored_hosts'] = ignored_hosts = []
-    #lines = []
-    #config['lines'] = lines
     with open(config_file) as fobj:
         for i, line in enumerate(fobj):
-            #lines.append(line)
             remain = line.strip()
             config['num_lines'] = i + 1
-            #dprint(line)
             commented = False
             if remain[:1] == "#":
                 commented = True
                 remain = remain[1:].strip()
-            #dprint(commented)
-            #dprint(line)
             if remain.startswith('dhcp-host='):
                 host = {}
                 remain = remain[remain.find('=')+1:]
@@ -125,18 +114,12 @@ def get_config():
                     host['comment'] = remain[pos+1:].strip()
                     remain = remain[:pos]
                 fields = remain.split(',')
-                #dprint(fields)
                 mac_list = []
                 extra_list = []
                 for field in fields:
                     field = field.strip()
-                    #dprint(field)
-                    #if field.find('id:') == 0:
-                    #    host['id'] = field[field.find(':')+1:]
                     if len(field.split(':')) == 6:
-                        #if field.split(':')[0].isdigit():
                         mac_list.append(field)
-                            #host['mac'] = mac_list
                     elif len(field.split('.')) == 4:
                         if field.split('.')[0].isdigit():
                             host['addr'] = field
@@ -151,11 +134,9 @@ def get_config():
                             host['name'] = field
                         else:
                             extra_list.append(field)
-                            #host['extra'] = extra_list
                 if host:
                     host['line_num'] = i+1
                     host['line'] = line
-                    #host['commented'] = commented
                     host['valid'] = not commented
                     host['mac'] = mac_list
                     host['extra'] = extra_list
@@ -165,7 +146,6 @@ def get_config():
                     else:
                         host['num'] = len(hosts) + 1
                         hosts.append(host)
-                #dprint(host)
     return config
 
 @route('/')
@@ -177,7 +157,6 @@ def index():
     d = datetime.datetime.now()
     timestamp = d.strftime("%y/%m/%d-%H:%M:%S")
     context = dict(
-        #hosts = hosts,
         hosts_json = json.dumps(hosts),
         hosts_file = hosts_file,
         leases_json = json.dumps(leases),
@@ -205,7 +184,6 @@ def host_to_line(host):
         extra_list = new_extra_list
     mac_list = host.get('mac', [])
     if mac_list:
-        #line += str.join(',', mac_list)
         fields.append(str.join(',', mac_list))
     name = host.get('name', None)
     if name:
@@ -214,7 +192,6 @@ def host_to_line(host):
     if addr:
         fields.append(addr)
     if extra_list:
-        #fields.append(extra)
         fields.append(str.join(', ', extra_list))
     duration = host.get('lease', None)
     if duration:
@@ -238,15 +215,12 @@ def host_to_line(host):
 @route('/api/save', method=["GET", "POST"])
 def save():
     data = request.json
-    #dprint(data)
     if os.path.isfile(config_file):
         lines = open(config_file, 'r').readlines()
     else:
         lines = []
     for host in data['hosts'] + data['ignored_hosts']:
-        #dprint(host)
         line_num = host.get('line_num', None)
-        #dprint(line_num)
         if host.get('changed', False):
             dprint(host)
             if host.get('appended', False):
@@ -260,9 +234,7 @@ def save():
                     file_line = ""
                 dprint(file_line)
                 dprint(check_line)
-                #dprint(check_line in file_line)
                 dprint(check_line == file_line)
-                #if check_line in file_line:
                 if check_line == file_line:
                     lines[line_num-1] = host_to_line(host) + "\n"
                     dprint(lines[line_num-1])
