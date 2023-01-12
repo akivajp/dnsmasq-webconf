@@ -254,7 +254,7 @@ def save():
 dprint(__name__)
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Dnsmasq Configurator')
-    parser.add_argument('port', default=80, nargs='?')
+    parser.add_argument('port', default=8080, nargs='?')
     parser.add_argument('--hosts', '-H', type=str, default=DEFAULT_HOSTS)
     parser.add_argument('--leases', '-L', type=str, default=DEFAULT_LEASES)
     parser.add_argument('--config', '-C', type=str, default=DEFAULT_CONFIG)
