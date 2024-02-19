@@ -31,8 +31,8 @@ TEMPLATE_PATH.append(os.path.join(dirpath, 'views'))
 static_dir = os.path.join(dirpath, 'static')
 
 DEFAULT_HOSTS = '/etc/hosts'
-DEFAULT_LEASES = '/var/lib/dnsmasq/dnsmasq.leases'
-DEFAULT_CONFIG = '/etc/dnsmasq.conf'
+DEFAULT_LEASES = '/var/lib/misc/dnsmasq.leases'
+DEFAULT_CONFIG = '/etc/dnsmasq.more.conf'
 
 hosts_file = None
 leases_file = None

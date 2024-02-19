@@ -16,7 +16,7 @@ $ git clone git@github.com:akivajp/dnsmasq-webconf.git
 * install pip modules 
 
 ```
-$ pip install --user bottle jinja2 numpy lpu
+$ pip install --user bottle jinja2
 ```
 
 ## Usage
