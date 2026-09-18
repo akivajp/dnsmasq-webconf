@@ -5,7 +5,7 @@ FROM python:3.12-slim
 WORKDIR /app
 COPY pyproject.toml README.md LICENSE ./
 COPY dnsmasq_webconf ./dnsmasq_webconf
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir ".[server]"
 
 # 設定ファイル書き換えのため、ホスト側の uid に合わせて起動することを想定する
 # (例: docker run --user "$(id -u):$(id -g)")

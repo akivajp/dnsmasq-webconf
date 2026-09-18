@@ -19,6 +19,8 @@
       var leases = {{ leases_json | safe }};
       var config = {{ config_json | safe }};
       var read_only = {{ 'true' if read_only else 'false' }};
+      // リース一覧の自動更新間隔 (秒)。0 のときは更新しない
+      var refresh_interval = {{ refresh_interval | default(0) }};
     </script>
     <script src="/static/main.js?{{ timestamp }}"></script>
 

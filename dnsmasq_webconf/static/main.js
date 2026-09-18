@@ -413,6 +413,18 @@ $(function () {
                 var failed = report.filter(function (r) {
                     return r.status !== 'appended' && r.status !== 'updated';
                 });
+                if (result.status === 'REJECTED') {
+                    // 検証 (dnsmasq --test 等) に失敗した場合。ファイルは
+                    // 変更されていないため、編集内容を保持したまま修正させる
+                    var output = (result.validation && result.validation.output) || '';
+                    show_status(
+                        'danger',
+                        '保存前の検証に失敗したため、ファイルは変更していません:',
+                        [output, 'エントリを修正して再度保存してください。']
+                    );
+                    $('.save-hosts').removeClass("disabled");
+                    return;
+                }
                 if (failed.length === 0) {
                     show_status('success', result.applied + ' 件を保存しました。');
                     // 追記により行番号がずれるため、保存後は必ず読み直す
@@ -440,6 +452,20 @@ $(function () {
             },
         });
     });
+    // リース一覧を定期的に再取得する。編集対象の設定テーブルは
+    // 未保存の変更があるため更新せず、閲覧専用のリース一覧だけを差し替える
+    function refresh_leases() {
+        $.getJSON('/api/leases', function (data) {
+            if (!Array.isArray(data)) { return; }
+            leases = data;
+            leased_addr_set = new Set(leases.map(function (h) { return h.addr; }));
+            update_hosts('dhcp-leases');
+        });
+    }
+    if (refresh_interval > 0) {
+        setInterval(refresh_leases, refresh_interval * 1000);
+    }
+
     $(document).on('change', '.edit-host', on_change);
     $(document).on('keydown', 'textarea', on_keydown);
     // 既に静的予約済みの MAC は、リース一覧側で「Add Static」を出さないために使う

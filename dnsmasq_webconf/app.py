@@ -27,8 +27,9 @@ from .config import (
     parse_config,
     parse_hosts,
     parse_leases,
+    promote_staged,
     read_lines,
-    write_lines_atomic,
+    stage_temp,
 )
 
 logger = logging.getLogger(__name__)
@@ -44,8 +45,11 @@ DEFAULT_CONFIG = '/etc/dnsmasq.more.conf'
 DEFAULT_HOST = '127.0.0.1'
 DEFAULT_PORT = 8080
 
-# reload コマンドが暴走しても UI を巻き込まないための上限 (秒)
-RELOAD_TIMEOUT = 30
+# reload / test コマンドが暴走しても UI を巻き込まないための上限 (秒)
+COMMAND_TIMEOUT = 30
+
+# 保存前検証コマンド内のパス置き換えに使うプレースホルダ
+TEST_PATH_PLACEHOLDER = '{path}'
 
 
 class Settings:
@@ -57,9 +61,11 @@ class Settings:
         leases_file: str | None = None,
         config_file: str | None = None,
         reload_command: str | None = None,
+        test_command: str | None = None,
         credentials: Credentials | None = None,
         read_only: bool = False,
         backup: bool = True,
+        refresh_interval: int = 30,
     ) -> None:
         """設定を初期化する。
 
@@ -68,17 +74,22 @@ class Settings:
             leases_file: dnsmasq リースファイルのパス (閲覧のみ)。
             config_file: 編集対象の dnsmasq 設定ファイルのパス。
             reload_command: 保存後に実行するシェルコマンド。
+            test_command: 保存前に実行する検証コマンド。``{path}`` を
+                対象ファイルのパスへ置き換えて実行する。
             credentials: BASIC 認証の資格情報。``None`` なら認証なし。
             read_only: 真なら保存 API を無効化する。
             backup: 保存時に ``.bak`` を残すかどうか。
+            refresh_interval: リース一覧の自動更新間隔 (秒)。0 で無効。
         """
         self.hosts_file = hosts_file
         self.leases_file = leases_file
         self.config_file = config_file
         self.reload_command = reload_command
+        self.test_command = test_command
         self.credentials = credentials
         self.read_only = read_only
         self.backup = backup
+        self.refresh_interval = refresh_interval
 
 
 def to_embedded_json(obj: Any) -> str:
@@ -108,35 +119,42 @@ def to_embedded_json(obj: Any) -> str:
     )
 
 
-def run_reload_command(command: str) -> dict[str, Any]:
-    """保存後のリロードコマンドを実行する。
+def run_command(
+    command: str, path: str | None = None
+) -> dict[str, Any]:
+    """保存後のリロード / 保存前の検証コマンドを実行する。
 
     Args:
-        command: 実行するシェルコマンド (サーバー管理者が指定したもの)。
+        command: 実行するシェルコマンド (サーバー管理者が起動時に指定したもの)。
+        path: ``{path}`` プレースホルダを置き換えるファイルパス。検証コマンドで
+            は一時ファイルのパスを渡し、リロードコマンドでは ``None`` を渡す。
 
     Returns:
-        ``{'command', 'returncode', 'stderr'}`` を含む実行結果。
+        ``{'command', 'returncode', 'output'}`` を含む実行結果。
     """
+    if path is not None:
+        # 管理者がコマンドを組むときにパスをクォートできるよう、単純置換のみ行う
+        command = command.replace(TEST_PATH_PLACEHOLDER, path)
     try:
         completed = subprocess.run(
             command,
             shell=True,  # 管理者が起動時に指定した文字列のみを実行する
             capture_output=True,
             text=True,
-            timeout=RELOAD_TIMEOUT,
+            timeout=COMMAND_TIMEOUT,
         )
     except subprocess.TimeoutExpired:
-        logger.error('reload コマンドがタイムアウトしました: %s', command)
-        return {'command': command, 'returncode': None, 'stderr': 'timeout'}
+        logger.error('コマンドがタイムアウトしました: %s', command)
+        return {'command': command, 'returncode': None, 'output': 'timeout'}
+    output = (completed.stdout + completed.stderr).strip()[:2000]
     if completed.returncode != 0:
         logger.error(
-            'reload コマンドが失敗しました (code=%s): %s',
-            completed.returncode, completed.stderr.strip(),
+            'コマンドが失敗しました (code=%s): %s', completed.returncode, output
         )
     return {
         'command': command,
         'returncode': completed.returncode,
-        'stderr': completed.stderr.strip()[:2000],
+        'output': output,
     }
 
 
@@ -180,6 +198,7 @@ def create_app(settings: Settings) -> bottle.Bottle:
             has_leases=leases is not None,
             has_config=config is not None,
             read_only=settings.read_only,
+            refresh_interval=settings.refresh_interval,
             version=__version__,
             timestamp=datetime.datetime.now().strftime('%y/%m/%d-%H:%M:%S'),
         )
@@ -199,6 +218,18 @@ def create_app(settings: Settings) -> bottle.Bottle:
         # path 直下だけでなく vendor/ 以下も配信するため path フィルタを使う。
         # static_file() が root 外へのアクセスを防ぐ。
         return bottle.static_file(path, root=STATIC_DIR)
+
+    @app.route('/api/leases')
+    @require_auth
+    def leases_api() -> str:
+        """リース一覧を JSON で返す (UI による定期更新用)。"""
+        bottle.response.headers['Content-Type'] = 'application/json'
+        bottle.response.headers['Cache-Control'] = 'no-store'
+        bottle.response.headers['X-Content-Type-Options'] = 'nosniff'
+        lines = read_lines(settings.leases_file)
+        leases = parse_leases(lines) if lines is not None else []
+        # リース名は信頼できない入力のため、JSON API でも "<" 等をエスケープする
+        return to_embedded_json(leases)
 
     @app.route('/api/save', method='POST')
     @require_auth
@@ -224,20 +255,73 @@ def create_app(settings: Settings) -> bottle.Bottle:
 
         # 1 件も変更が無い場合はファイルに触れない
         if report:
-            write_lines_atomic(settings.config_file, lines, backup=settings.backup)
+            conflicts = [
+                r for r in report if r['status'] not in ('appended', 'updated')
+            ]
+            applied = len(report) - len(conflicts)
+            result: dict[str, Any] = {'applied': applied, 'report': report}
 
-        conflicts = [r for r in report if r['status'] not in ('appended', 'updated')]
-        result: dict[str, Any] = {
-            'status': 'OK' if not conflicts else 'PARTIAL',
-            'applied': len(report) - len(conflicts),
-            'report': report,
-        }
-        # 変更が実際に書き込まれた場合のみ dnsmasq を再読み込みする
-        if settings.reload_command and (len(report) - len(conflicts)) > 0:
-            result['reload'] = run_reload_command(settings.reload_command)
-        return json.dumps(result, ensure_ascii=False)
+            # 検証コマンドが指定されている場合、まず一時ファイルへ書き出し、
+            # そのパスで検証する。合格するまで正式なファイルには触れないため、
+            # 失敗時のロールバックが不要になる。
+            tmp_path: str | None = stage_temp(settings.config_file, lines) if report else None
+            try:
+                if settings.test_command and tmp_path:
+                    validation = run_command(settings.test_command, path=tmp_path)
+                    if validation['returncode'] != 0:
+                        # 検証に失敗した場合は書き込みを取りやめる (既存ファイルは無傷)
+                        return json.dumps({
+                            'status': 'REJECTED',
+                            'applied': 0,
+                            'report': report,
+                            'validation': validation,
+                        }, ensure_ascii=False)
+                if tmp_path:
+                    promote_staged(
+                        settings.config_file, tmp_path, backup=settings.backup
+                    )
+                    tmp_path = None
+            finally:
+                # 未昇格の一時ファイルを必ず始末する
+                if tmp_path and os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+
+            result['status'] = 'OK' if applied else 'PARTIAL'
+            # 変更が実際に書き込まれた場合のみ dnsmasq を再読み込みする
+            if settings.reload_command and applied > 0:
+                result['reload'] = run_command(settings.reload_command)
+            return json.dumps(result, ensure_ascii=False)
+
+        return json.dumps({
+            'status': 'OK', 'applied': 0, 'report': [],
+        }, ensure_ascii=False)
 
     return app
+
+
+def resolve_auth(spec: str | None) -> Credentials | None:
+    """CLI の ``--auth`` 値を資格情報へ変換する。
+
+    Args:
+        spec: ``user:password`` 形式の文字列。``:`` が無い場合はユーザー名のみ
+            と見なし、ターミナルからパスワードを対話入力する (シェル履歴や
+            ``ps`` の出力にパスワードが残るのを避けるため)。
+
+    Returns:
+        解析済みの資格情報。``spec`` が空なら ``None``。
+
+    Raises:
+        ValueError: 形式が不正、または入力が空の場合。
+    """
+    if not spec:
+        return None
+    if ':' in spec:
+        return Credentials.parse(spec)
+    import getpass
+    password = getpass.getpass(f'BASIC 認証のパスワード ({spec}): ')
+    if not password:
+        raise ValueError('パスワードが入力されませんでした')
+    return Credentials(spec, password)
 
 
 def is_loopback(host: str) -> bool:
@@ -274,6 +358,7 @@ def build_parser() -> argparse.ArgumentParser:
             '  # LAN へ公開する (認証が必須)\n'
             '  dnsmasq-webconf --host 0.0.0.0 --auth admin:secret \\\n'
             '      --config /etc/dnsmasq.more.conf \\\n'
+            '      --test-command \'dnsmasq --test -C "{path}"\' \\\n'
             '      --reload "systemctl reload dnsmasq"\n'
         ),
     )
@@ -300,6 +385,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         '--reload-command', '--reload', '-R', type=str, default=None,
         help='保存後に実行するコマンド (例: "systemctl reload dnsmasq")',
+    )
+    parser.add_argument(
+        '--test-command', '-T', type=str, default=None,
+        help=(
+            '保存前に実行する検証コマンド。{path} が対象ファイルのパスに置き換わる '
+            '(例: \'dnsmasq --test -C "{path}"\')。合格しなければ書き込みを行わない'
+        ),
+    )
+    parser.add_argument(
+        '--refresh-interval', type=int, default=30, metavar='SECONDS',
+        help='リース一覧の自動更新間隔 (秒)。0 で無効化 (既定: 30)',
     )
     parser.add_argument(
         '--auth', '-A', type=str, default=None, metavar='USER:PASSWORD',
@@ -345,14 +441,13 @@ def main(argv: list[str] | None = None) -> int:
 
     # 認証情報はコマンドラインより環境変数を後置きで上書きしない
     # (ps から見えないよう、環境変数の利用を推奨する)
-    auth_spec = args.auth or os.environ.get('DNSMASQ_WEBCONF_AUTH')
-    credentials = None
-    if auth_spec:
-        try:
-            credentials = Credentials.parse(auth_spec)
-        except ValueError as exc:
-            logger.error('--auth の指定が不正です: %s', exc)
-            return 2
+    try:
+        credentials = resolve_auth(
+            args.auth or os.environ.get('DNSMASQ_WEBCONF_AUTH')
+        )
+    except ValueError as exc:
+        logger.error('--auth の指定が不正です: %s', exc)
+        return 2
 
     # 認証なしで外部に公開すると、誰でも DHCP 予約を書き換えられてしまう
     if credentials is None and not is_loopback(args.host) and not args.read_only:
@@ -375,9 +470,11 @@ def main(argv: list[str] | None = None) -> int:
         leases_file=args.leases,
         config_file=args.config,
         reload_command=args.reload_command,
+        test_command=args.test_command,
         credentials=credentials,
         read_only=args.read_only,
         backup=not args.no_backup,
+        refresh_interval=args.refresh_interval,
     )
 
     # 起動時に実際に読み込める対象を表示しておく (設定ミスの早期発見のため)
@@ -391,10 +488,24 @@ def main(argv: list[str] | None = None) -> int:
         logger.info('読み取り専用モードで起動します')
 
     app = create_app(settings)
+
+    # 依存を追加した場合のみマルチスレッドの waitress を使う。
+    # wsgiref (既定) はシングルスレッドなので、reload コマンドの実行中は
+    # 他のリクエストが待たされてしまう。--debug 時は reloader が
+    # waitress と併用できないため既定サーバーのままにする。
+    server = 'wsgiref'
+    if not args.debug:
+        try:
+            import waitress  # noqa: F401
+            server = 'waitress'
+            logger.info('HTTP サーバー: waitress (マルチスレッド)')
+        except ImportError:
+            logger.info('HTTP サーバー: wsgiref ( waitress を導入するとマルチスレッドになります)')
     bottle.run(
         app=app,
         host=args.host,
         port=args.port,
+        server=server,
         quiet=not args.debug,
         debug=args.debug,
         reloader=args.debug,

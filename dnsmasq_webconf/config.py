@@ -244,6 +244,54 @@ def read_lines(path: str | None) -> list[str] | None:
         return fobj.readlines()
 
 
+def stage_temp(path: str, lines: list[str]) -> str:
+    """行のリストを、``path`` と同じディレクトリの一時ファイルへ書き出す。
+
+    保存前の検証 (``dnsmasq --test`` など) を挟めるよう、書き込みと
+    置き換えを分けている。一時ファイルは呼び出し側が :func:`promote_staged`
+    か ``os.unlink`` で始末すること。
+
+    Args:
+        path: 最終的な書き出し先のパス (同一ディレクトリに一時ファイルを作る)。
+        lines: 書き出す行 (各行は改行を含む)。
+
+    Returns:
+        作成した一時ファイルのパス。
+    """
+    directory = os.path.dirname(os.path.abspath(path)) or '.'
+    fd, tmp_path = tempfile.mkstemp(dir=directory, prefix='.dnsmasq-webconf-')
+    with os.fdopen(fd, 'w', encoding='utf-8', errors='surrogateescape') as fobj:
+        fobj.writelines(lines)
+        fobj.flush()
+        os.fsync(fobj.fileno())
+    # mkstemp は 0600 で作るため、既存ファイルの権限・所有権を引き継ぐ。
+    # 引き継がないと、dnsmasq が別ユーザーで動く構成で初回保存後に
+    # 設定ファイルが読めなくなってしまう。
+    if os.path.isfile(path):
+        st = os.stat(path)
+        os.chmod(tmp_path, stat_module.S_IMODE(st.st_mode))
+        try:
+            os.chown(tmp_path, st.st_uid, st.st_gid)
+        except (PermissionError, OSError):
+            # root でない場合は chown できないので、現ユーザー所有のままにする
+            pass
+    return tmp_path
+
+
+def promote_staged(path: str, tmp_path: str, backup: bool = True) -> None:
+    """検証済みの一時ファイルを正式な保存先へ置き換える。
+
+    Args:
+        path: 書き出し先のパス。
+        tmp_path: :func:`stage_temp` が返した一時ファイルのパス。
+        backup: 真なら既存ファイルを ``<path>.bak`` として退避する。
+    """
+    if backup and os.path.isfile(path):
+        # 直前の内容を 1 世代だけ退避する (copy2 でメタデータごと保持する)
+        shutil.copy2(path, path + '.bak')
+    os.replace(tmp_path, path)
+
+
 def write_lines_atomic(path: str, lines: list[str], backup: bool = True) -> None:
     """行のリストをファイルへ原子的に書き出す。
 
@@ -255,30 +303,11 @@ def write_lines_atomic(path: str, lines: list[str], backup: bool = True) -> None
         lines: 書き出す行 (各行は改行を含む)。
         backup: 真なら既存ファイルを ``<path>.bak`` として退避する。
     """
-    directory = os.path.dirname(os.path.abspath(path)) or '.'
-    if backup and os.path.isfile(path):
-        # 直前の内容を 1 世代だけ退避する (copy2 でメタデータごと保持する)
-        shutil.copy2(path, path + '.bak')
-    fd, tmp_path = tempfile.mkstemp(dir=directory, prefix='.dnsmasq-webconf-')
+    tmp_path = stage_temp(path, lines)
     try:
-        with os.fdopen(fd, 'w', encoding='utf-8', errors='surrogateescape') as fobj:
-            fobj.writelines(lines)
-            fobj.flush()
-            os.fsync(fobj.fileno())
-        # mkstemp は 0600 で作るため、既存ファイルの権限・所有権を引き継ぐ。
-        # 引き継がないと、dnsmasq が別ユーザーで動く構成で初回保存後に
-        # 設定ファイルが読めなくなってしまう。
-        if os.path.isfile(path):
-            st = os.stat(path)
-            os.chmod(tmp_path, stat_module.S_IMODE(st.st_mode))
-            try:
-                os.chown(tmp_path, st.st_uid, st.st_gid)
-            except (PermissionError, OSError):
-                # root でない場合は chown できないので、現ユーザー所有のままにする
-                pass
-        os.replace(tmp_path, path)
+        promote_staged(path, tmp_path, backup=backup)
     except BaseException:
-        # 失敗時に一時ファイルを残さない
+        # 昇格に失敗した場合は一時ファイルを残さない
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
         raise
