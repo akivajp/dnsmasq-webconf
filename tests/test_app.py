@@ -109,6 +109,12 @@ class TestIndex:
         assert 'save-hosts' not in res.text
         assert 'add-host' not in res.text
 
+    def test_filter_box_is_rendered(self, files) -> None:
+        """絞り込み検索ボックス (v0.3.2) が Filters セクションにあること。"""
+        res = make_app(files).get('/')
+        assert 'id="filter-text"' in res.text
+        assert 'Filter by name, IP, MAC' in res.text
+
 
 class TestEscaping:
     """信頼できない入力の埋め込み時のエスケープを確認する。"""

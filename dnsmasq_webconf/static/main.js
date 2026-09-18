@@ -9,6 +9,10 @@ if (typeof config === 'undefined') { config = {}; }
 if (typeof read_only === 'undefined') { read_only = false; }
 if (typeof refresh_interval === 'undefined') { refresh_interval = 0; }
 var hide_commented = false;
+// Filters の検索ボックスの内容 (小文字化済み)。空文字なら絞り込み無し
+var filter_text = '';
+// 保存成功後の自動リロード中は離脱警告を出さないためのフラグ
+var saving = false;
 var config_mac_set = new Set();
 var leased_addr_set = new Set();
 
@@ -57,6 +61,15 @@ function match_host(host, cond) {
         }
     }
     return true;
+}
+
+// 検索ボックスの内容でエントリを絞り込む。対象はホスト名・IP・MAC・
+// コメント (hosts 表は names)。大文字小文字を区別しない部分一致
+function match_filter(host) {
+    if (!filter_text) { return true; }
+    var fields = [host.name, host.addr, host.comment, host.mac, host.names];
+    var haystack = fields.join(' ').toLowerCase();
+    return haystack.indexOf(filter_text) !== -1;
 }
 
 function modify_hosts(hosts, cond, apply) {
@@ -256,6 +269,9 @@ $(function () {
             if (hide_commented && !host.valid) {
                 continue;
             }
+            if (!match_filter(host)) {
+                continue;
+            }
             var tag_tr = $('<tr>').appendTo(tag_tbody);
             if (host.valid === false) {
                 tag_tr.addClass("table-secondary");
@@ -379,6 +395,14 @@ $(function () {
         update_hosts('dhcp-hosts');
         update_hosts('ignored-hosts');
     });
+    $('#filter-text').on('input', function (e) {
+        filter_text = $(e.currentTarget).val().trim().toLowerCase();
+        // 4テーブルすべてに同じ絞り込みを適用する
+        update_hosts('dhcp-hosts');
+        update_hosts('dhcp-leases');
+        update_hosts('ignored-hosts');
+        update_hosts('system-hosts');
+    });
     $('.add-host').click(function (e) {
         var tag_click = $(e.currentTarget);
         var table_id = tag_click.data('target');
@@ -430,7 +454,9 @@ $(function () {
                 }
                 if (failed.length === 0) {
                     show_status('success', 'Saved ' + result.applied + ' entries.');
-                    // 追記により行番号がずれるため、保存後は必ず読み直す
+                    // 追記により行番号がずれるため、保存後は必ず読み直す。
+                    // このリロードでは離脱警告を出させない
+                    saving = true;
                     window.location.reload();
                     return;
                 }
@@ -480,6 +506,17 @@ $(function () {
     for (var host of leases) {
       leased_addr_set.add(host.addr);
     }
+    // 未保存の変更 (編集・追加・削除いずれかの印) があるときだけ
+    // ページ離脱を警告する。保存後の自動リロード中は出さない
+    window.addEventListener('beforeunload', function (e) {
+        if (saving) { return; }
+        var dirty = config.hosts.concat(config.ignored_hosts).some(function (h) {
+            return h.changed || h.appended || h.delete;
+        });
+        if (!dirty) { return; }
+        e.preventDefault();
+        e.returnValue = '';
+    });
     update_hosts('dhcp-hosts');
     update_hosts('ignored-hosts');
     update_hosts('system-hosts');

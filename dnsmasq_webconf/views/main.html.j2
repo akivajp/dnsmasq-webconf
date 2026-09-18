@@ -45,8 +45,16 @@
           Filters
         </h2>
         <div class="card-body">
-          <input type="checkbox" id="hide-commented">
-          <label for="hide-commented">Hide Hosts Commented-Out</label>
+          <div class="form-row align-items-center">
+            <div class="col-auto">
+              <input type="search" id="filter-text" class="form-control"
+                     placeholder="Filter by name, IP, MAC&hellip;">
+            </div>
+            <div class="col-auto">
+              <input type="checkbox" id="hide-commented">
+              <label for="hide-commented">Hide Hosts Commented-Out</label>
+            </div>
+          </div>
         </div>
       </div>
     </div>

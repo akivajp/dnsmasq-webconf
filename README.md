@@ -47,6 +47,8 @@ not try to compete with it. See [Alternatives](#alternatives) below.
   touches your config; a rejected save changes nothing.
 - **Live lease table** — the lease view refreshes periodically, so a newly connected
   device can be reserved the moment it appears.
+- **Filter box** — type a name, IP, MAC or comment fragment to narrow all tables at
+  once; leaving with unsaved changes asks for confirmation.
 - **No database, no build step, no JavaScript toolchain.** Two Python dependencies,
   and all CSS/JS is bundled — it works on an isolated network with no internet access.
 

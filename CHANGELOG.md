@@ -5,6 +5,16 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-09-19
+
+### Added
+
+- **Filter box** above the tables: type a name, IP, MAC or comment fragment to narrow
+  all four tables at once (case-insensitive substring match).
+- **Unsaved-changes warning**: leaving the page with unsaved edits, additions or
+  deletions now asks for confirmation. The automatic reload after a successful save
+  does not trigger it.
+
 ## [0.3.1] - 2026-09-19
 
 ### Added
