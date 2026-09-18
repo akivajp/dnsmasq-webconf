@@ -5,6 +5,25 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-19
+
+### Added
+
+- A headless-browser smoke test in CI that renders the page and asserts the tables
+  actually contain rows. v0.2.0 and v0.3.0 both shipped rendering bugs (an early
+  `</script>` in a JS comment, then `main.js` clobbering the embedded data globals)
+  that Python-side tests cannot detect.
+- A workflow that publishes the Docker image to GHCR on tag pushes
+  (`ghcr.io/akivajp/dnsmasq-webconf`).
+
+### Changed
+
+- The UI is English, but save results and server-side conflict messages were Japanese.
+  All user-facing messages are now English.
+- The systemd unit example in both READMEs now includes optional hardening
+  (`ProtectSystem=full` etc.).
+- Removed leftover `console.log` debug statements from `main.js`.
+
 ## [0.3.0] - 2026-09-19
 
 ### Added

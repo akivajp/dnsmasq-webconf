@@ -161,6 +161,10 @@ ExecStart=/usr/local/bin/dnsmasq-webconf 8080 \
     --host 0.0.0.0 \
     --config /etc/dnsmasq.more.conf \
     --reload "systemctl reload dnsmasq"
+# Optional hardening: make everything outside the config file read-only
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/etc/dnsmasq.more.conf
 Restart=on-failure
 
 [Install]

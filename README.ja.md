@@ -158,6 +158,10 @@ ExecStart=/usr/local/bin/dnsmasq-webconf 8080 \
     --host 0.0.0.0 \
     --config /etc/dnsmasq.more.conf \
     --reload "systemctl reload dnsmasq"
+# 任意のハードニング: 設定ファイル以外への書き込みを禁止する
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/etc/dnsmasq.more.conf
 Restart=on-failure
 
 [Install]

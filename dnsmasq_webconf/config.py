@@ -351,7 +351,7 @@ def apply_changes(
             report.append({
                 'status': 'invalid',
                 'host': label,
-                'message': 'line_num がありません',
+                'message': 'missing line_num',
             })
             continue
         if not (1 <= line_num <= len(lines)):
@@ -359,7 +359,7 @@ def apply_changes(
                 'status': 'out_of_range',
                 'host': label,
                 'line_num': line_num,
-                'message': '行番号がファイル範囲外です',
+                'message': 'line number is out of range',
             })
             continue
         # 読み込み時の原文と突き合わせ、ファイルが外部で変更されていないか確認する
@@ -368,7 +368,7 @@ def apply_changes(
                 'status': 'conflict',
                 'host': label,
                 'line_num': line_num,
-                'message': 'ファイルが外部で変更されたため上書きを中止しました',
+                'message': 'file changed on disk since it was loaded; entry skipped',
             })
             continue
         lines[line_num - 1] = new_line

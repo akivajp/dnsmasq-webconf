@@ -143,7 +143,6 @@ $(function () {
     }
     function add_ignore(e) {
         var tag_click = $(e.currentTarget);
-        console.log("ignore");
         var num = tag_click.data('num');
         var host = leases[num-1];
         var new_host = {
@@ -375,7 +374,6 @@ $(function () {
     $('#hide-commented').change(function (e) {
         var tag_check = $(e.currentTarget);
         var checked = tag_check.prop('checked');
-        console.log(checked);
         hide_commented = checked;
         // 無効化したエントリは ignored-hosts 側にも存在するため両方に適用する
         update_hosts('dhcp-hosts');
@@ -424,14 +422,14 @@ $(function () {
                     var output = (result.validation && result.validation.output) || '';
                     show_status(
                         'danger',
-                        '保存前の検証に失敗したため、ファイルは変更していません:',
-                        [output, 'エントリを修正して再度保存してください。']
+                        'Pre-save validation failed — the file was not modified:',
+                        [output, 'Fix the entries and save again.']
                     );
                     $('.save-hosts').removeClass("disabled");
                     return;
                 }
                 if (failed.length === 0) {
-                    show_status('success', result.applied + ' 件を保存しました。');
+                    show_status('success', 'Saved ' + result.applied + ' entries.');
                     // 追記により行番号がずれるため、保存後は必ず読み直す
                     window.location.reload();
                     return;
@@ -439,10 +437,10 @@ $(function () {
                 // 衝突した行は書き込まれていないので、変更状態を保持したまま再編集させる
                 show_status(
                     'warning',
-                    result.applied + ' 件を保存しましたが、'
-                        + failed.length + ' 件は保存できませんでした:',
+                    'Saved ' + result.applied + ' entries, but ' + failed.length
+                        + ' could not be saved:',
                     failed.map(function (r) {
-                        return r.host + ' (行 ' + r.line_num + '): ' + r.message;
+                        return r.host + ' (line ' + r.line_num + '): ' + r.message;
                     })
                 );
                 $('.save-hosts').removeClass("disabled");
@@ -450,7 +448,7 @@ $(function () {
             error: function (xhr) {
                 show_status(
                     'danger',
-                    '保存に失敗しました (HTTP ' + xhr.status + ')',
+                    'Save failed (HTTP ' + xhr.status + ')',
                     [xhr.responseText ? String(xhr.responseText).slice(0, 300) : '']
                 );
                 $('.save-hosts').removeClass("disabled");
