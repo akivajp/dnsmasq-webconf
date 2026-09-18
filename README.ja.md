@@ -9,7 +9,7 @@ dnsmasq の**静的 DHCP 予約**を管理する軽量 Web UI です。
 
 [English README](README.md)
 
-![スクリーンショット](docs/screenshot.png)
+![スクリーンショット](https://raw.githubusercontent.com/akivajp/dnsmasq-webconf/master/docs/screenshot.png)
 
 ## このツールの位置づけ
 
@@ -64,6 +64,19 @@ pipx install dnsmasq-webconf
 > `pipx` または `uv tool` を利用してください。
 
 ### Docker を使う場合
+
+ビルド済みイメージを GHCR で公開しています:
+
+```shell
+docker run --rm -p 8080:8080 \
+    --user "$(id -u):$(id -g)" \
+    -e DNSMASQ_WEBCONF_AUTH='admin:secret' \
+    -v /etc/dnsmasq.more.conf:/etc/dnsmasq.more.conf \
+    -v /var/lib/misc/dnsmasq.leases:/var/lib/misc/dnsmasq.leases:ro \
+    ghcr.io/akivajp/dnsmasq-webconf:latest
+```
+
+自分でビルドする場合:
 
 ```shell
 docker build -t dnsmasq-webconf .

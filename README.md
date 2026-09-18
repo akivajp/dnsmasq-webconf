@@ -10,7 +10,7 @@ ownership of your config file.
 
 [日本語版 README はこちら](README.ja.md)
 
-![Screenshot](docs/screenshot.png)
+![Screenshot](https://raw.githubusercontent.com/akivajp/dnsmasq-webconf/master/docs/screenshot.png)
 
 ## Why this exists
 
@@ -64,6 +64,19 @@ pipx install dnsmasq-webconf
 > [PEP 668](https://peps.python.org/pep-0668/). Use `pipx` or `uv tool` instead.
 
 ### With Docker
+
+Pre-built images are published to GHCR:
+
+```shell
+docker run --rm -p 8080:8080 \
+    --user "$(id -u):$(id -g)" \
+    -e DNSMASQ_WEBCONF_AUTH='admin:secret' \
+    -v /etc/dnsmasq.more.conf:/etc/dnsmasq.more.conf \
+    -v /var/lib/misc/dnsmasq.leases:/var/lib/misc/dnsmasq.leases:ro \
+    ghcr.io/akivajp/dnsmasq-webconf:latest
+```
+
+Or build it yourself:
 
 ```shell
 docker build -t dnsmasq-webconf .
