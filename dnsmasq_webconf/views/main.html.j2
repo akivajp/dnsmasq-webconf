@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    {# 閉域 LAN でも動作するよう、CSS/JS はすべてパッケージ同梱のものを配信する #}
+    <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
+
+    <title>Dnsmasq Configurator</title>
+  </head>
+  <body>
+    <script src="/static/vendor/jquery.min.js"></script>
+    <script src="/static/vendor/bootstrap.bundle.min.js"></script>
+    <script>
+      // これらの値は to_embedded_json() で "<" 等をエスケープ済みのため、
+      // 設定ファイルやリース名に </script> が含まれていても脱出できない。
+      var system_hosts = {{ hosts_json | safe }};
+      var leases = {{ leases_json | safe }};
+      var config = {{ config_json | safe }};
+      var read_only = {{ 'true' if read_only else 'false' }};
+    </script>
+    <script src="/static/main.js?{{ timestamp }}"></script>
+
+    <div class="container-fluid">
+      <nav class="navbar navbar-dark bg-primary">
+        <h1 class="h1 navbar-brand">Dnsmasq Configurator</h1>
+        <span class="navbar-text text-white-50 small">
+          v{{ version }}{% if read_only %} &middot; read-only{% endif %}
+        </span>
+      </nav>
+    </div>
+
+    {# 保存結果 (成功・衝突) をユーザーに見せるための領域 #}
+    <div class="container-fluid my-2">
+      <div id="save-status"></div>
+    </div>
+
+    <div class="container-fluid my-2">
+      <div class="card">
+        <h2 class="h2 card-header">
+          Filters
+        </h2>
+        <div class="card-body">
+          <input type="checkbox" id="hide-commented">
+          <label for="hide-commented">Hide Hosts Commented-Out</label>
+        </div>
+      </div>
+    </div>
+
+    {% if has_config %}
+    <div class="container-fluid my-2">
+      <div class="card">
+        <h2 class="h2 card-header">
+            DHCP Hosts ({{ config_file }})
+        </h2>
+        <div class="card-body">
+          <table id="dhcp-hosts" class="table table-bordered">
+            <thead>
+              <tr class="table-primary">
+                <th class="text-center"><a class="sort-button" data-editable="1" data-key="valid">Valid</a></th>
+                <th class="text-center"><a class="sort-button" data-key="num">#</a></th>
+                <th class="text-center"><a class="sort-button" data-editable="1" data-key="addr">IP Address</a></th>
+                <th class="text-center"><a class="sort-button" data-editable="1" data-key="name">Host Name</a></th>
+                <th class="text-center"><a class="sort-button" data-editable="1" data-key="mac">Mac Addresses</a></th>
+                <th class="text-center"><a class="sort-button" data-editable="1" data-key="lease">Lease Duration</a></th>
+                <th class="text-center"><a class="sort-button" data-editable="1" data-key="extra">Extra Fields</a></th>
+                <th class="text-center"><a class="sort-button" data-editable="1" data-key="comment">Comment</a></th>
+                <th class="text-center"><span data-key="move">Control</span></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          {% if not read_only %}
+          <a class="add-host btn btn-primary text-white" data-target="dhcp-hosts">Add</a>
+          <a class="save-hosts btn btn-primary text-white disabled">Save</a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if has_leases %}
+    <div class="container-fluid my-2">
+        <div class="card">
+            <h2 class="h2 card-header">
+                DHCP Leases ({{ leases_file }})
+            </h2>
+            <div class="card-body">
+              <table id="dhcp-leases" class="table">
+                <thead>
+                  <tr class="table-primary">
+                    <th class="text-center"><a class="sort-button" data-key="num">#</a></th>
+                    <th class="text-center"><a class="sort-button" data-key="timestamp">Issued</a></th>
+                    <th class="text-center"><a class="sort-button" data-key="mac">Mac Address</a></th>
+                    <th class="text-center"><a class="sort-button" data-key="addr">IP Address</a></th>
+                    <th class="text-center"><a class="sort-button" data-key="name">Host Name</a></th>
+                    <th class="text-center"><a class="sort-button" data-key="id">Client ID</a></th>
+                    {% if not read_only %}
+                    <th class="text-center"><span data-key="control">Control</span></th>
+                    {% endif %}
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if has_config %}
+    <div class="container-fluid my-2">
+      <div class="card">
+        <h2 class="h2 card-header">
+          Ignored Hosts
+        </h2>
+        <div class="card-body">
+          <table id="ignored-hosts" class="table">
+            <thead>
+              <tr class="table-primary">
+                <th class="text-center"><a class="sort-button" data-editable="1" data-key="valid">Valid</a></th>
+                <th class="text-center"><a class="sort-button" data-key="num">#</a></th>
+                <th class="text-center"><a class="sort-button" data-editable="1" data-key="name">Host Name</a></th>
+                <th class="text-center"><a class="sort-button" data-editable="1" data-key="mac">Mac Addresses</a></th>
+                <th class="text-center"><a class="sort-button" data-editable="1" data-key="comment">Comment</a></th>
+                <th class="text-center"><span data-key="move">Control</span></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          {% if not read_only %}
+          <a class="add-host btn btn-primary text-white" data-target="ignored-hosts">Add</a>
+          <a class="save-hosts btn btn-primary text-white disabled">Save</a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if has_hosts %}
+    <div class="container-fluid my-2">
+        <div class="card">
+            <h2 class="h2 card-header">
+                System's hosts file ({{ hosts_file }})
+            </h2>
+            <div class="card-body">
+              <table id="system-hosts" class="table">
+                <thead>
+                  <tr class="table-primary">
+                    <th class="text-center"><a class="sort-button" data-key="num">#</a></th>
+                    <th class="text-center"><a class="sort-button" data-key="addr">IP Address</a></th>
+                    <th class="text-center"><a class="sort-button" data-key="names">Host Names</a></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+  </body>
+</html>
