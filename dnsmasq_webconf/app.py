@@ -94,7 +94,10 @@ def to_embedded_json(obj: Any) -> str:
     Returns:
         エスケープ済みの JSON 文字列。
     """
-    text = json.dumps(obj, ensure_ascii=False)
+    # ensure_ascii=True で非 ASCII 文字を \uXXXX にエスケープする。
+    # surrogateescape で読み込んだ不正バイト (単独サロゲート) を含む文字列が
+    # レスポンスの UTF-8 エンコード時に 500 になるのを防ぐため。
+    text = json.dumps(obj, ensure_ascii=True)
     return (
         text.replace('<', '\\u003c')
             .replace('>', '\\u003e')

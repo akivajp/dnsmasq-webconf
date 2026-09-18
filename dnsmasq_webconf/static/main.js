@@ -372,7 +372,9 @@ $(function () {
         var checked = tag_check.prop('checked');
         console.log(checked);
         hide_commented = checked;
+        // 無効化したエントリは ignored-hosts 側にも存在するため両方に適用する
         update_hosts('dhcp-hosts');
+        update_hosts('ignored-hosts');
     });
     $('.add-host').click(function (e) {
         var tag_click = $(e.currentTarget);

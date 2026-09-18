@@ -3,6 +3,21 @@
 All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Saving a config file no longer breaks files it should not touch.** Reads previously
+  used `errors='replace'`, so with one edited line the whole file was rewritten and any
+  non-UTF-8 byte in untouched lines was replaced by U+FFFD. Reads and writes now use
+  `surrogateescape`, preserving invalid bytes exactly.
+- **Saves now preserve the config file's permissions and ownership.** The atomic write
+  left the new file at mode `0600`, which broke dnsmasq configurations where the server
+  runs as another user and lost read access after the first save.
+- The "hide commented-out" filter now also applies to the Ignored Hosts table.
+- JSON embedded into the page is now ASCII-escaped, so a config containing invalid
+  bytes renders instead of failing the response.
+
 ## [0.2.0] - 2026-09-18
 
 The first maintenance release since 2024. It focuses on making the existing feature

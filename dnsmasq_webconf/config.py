@@ -13,6 +13,8 @@ from __future__ import annotations
 import datetime
 import os
 import re
+import shutil
+import stat as stat_module
 import tempfile
 from typing import Any, Iterable
 
@@ -235,8 +237,10 @@ def read_lines(path: str | None) -> list[str] | None:
     """
     if not path or not os.path.isfile(path):
         return None
-    # 設定ファイルに不正なバイトが混ざっていても読み取りを継続する
-    with open(path, encoding='utf-8', errors='replace') as fobj:
+    # surrogateescape により、UTF-8 として不正なバイトも損失なく保持する。
+    # errors='replace' で読むと、保存時に全行が再書き込みされる際に
+    # 変更していない行のバイトまで U+FFFD に置き換わってしまう。
+    with open(path, encoding='utf-8', errors='surrogateescape') as fobj:
         return fobj.readlines()
 
 
@@ -253,17 +257,25 @@ def write_lines_atomic(path: str, lines: list[str], backup: bool = True) -> None
     """
     directory = os.path.dirname(os.path.abspath(path)) or '.'
     if backup and os.path.isfile(path):
-        # 直前の内容を 1 世代だけ退避しておく
-        with open(path, encoding='utf-8', errors='replace') as src:
-            previous = src.read()
-        with open(path + '.bak', 'w', encoding='utf-8') as dst:
-            dst.write(previous)
+        # 直前の内容を 1 世代だけ退避する (copy2 でメタデータごと保持する)
+        shutil.copy2(path, path + '.bak')
     fd, tmp_path = tempfile.mkstemp(dir=directory, prefix='.dnsmasq-webconf-')
     try:
-        with os.fdopen(fd, 'w', encoding='utf-8') as fobj:
+        with os.fdopen(fd, 'w', encoding='utf-8', errors='surrogateescape') as fobj:
             fobj.writelines(lines)
             fobj.flush()
             os.fsync(fobj.fileno())
+        # mkstemp は 0600 で作るため、既存ファイルの権限・所有権を引き継ぐ。
+        # 引き継がないと、dnsmasq が別ユーザーで動く構成で初回保存後に
+        # 設定ファイルが読めなくなってしまう。
+        if os.path.isfile(path):
+            st = os.stat(path)
+            os.chmod(tmp_path, stat_module.S_IMODE(st.st_mode))
+            try:
+                os.chown(tmp_path, st.st_uid, st.st_gid)
+            except (PermissionError, OSError):
+                # root でない場合は chown できないので、現ユーザー所有のままにする
+                pass
         os.replace(tmp_path, path)
     except BaseException:
         # 失敗時に一時ファイルを残さない

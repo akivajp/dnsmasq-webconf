@@ -221,3 +221,39 @@ class TestFileIO:
         target.write_bytes(b'dhcp-host=aa:bb:cc:dd:ee:01, \xff\xfe, 1.2.3.4\n')
         lines = read_lines(str(target))
         assert lines is not None and len(lines) == 1
+
+    def test_save_preserves_invalid_bytes_in_untouched_lines(
+        self, tmp_path
+    ) -> None:
+        """不正バイトを含むファイルを保存しても、変更していない行のバイトは無傷。
+
+        旧実装は errors='replace' で読むため、1 行だけ編集しても
+        全行が U+FFFD に置き換わって書き戻されるデータ破壊が発生した。
+        """
+        target = tmp_path / 'dnsmasq.conf'
+        target.write_bytes(
+            b'dhcp-host=aa:bb:cc:dd:ee:01, valid, 1.2.3.4\n'
+            b'dhcp-host=aa:bb:cc:dd:ee:02, \xff\xfe, 1.2.3.5\n'
+        )
+        lines = read_lines(str(target))
+        lines[0] = 'dhcp-host=aa:bb:cc:dd:ee:01, edited, 1.2.3.9\n'
+        write_lines_atomic(str(target), lines, backup=False)
+        after = target.read_bytes()
+        # 編集していない 2 行目の不正バイトは元のまま残る
+        assert b'dhcp-host=aa:bb:cc:dd:ee:02, \xff\xfe, 1.2.3.5\n' in after
+
+    def test_save_preserves_file_mode(self, tmp_path) -> None:
+        """mkstemp が 0600 で作るため、既存ファイルの権限を明示的に引き継ぐ。"""
+        target = tmp_path / 'dnsmasq.conf'
+        target.write_text('old\n', encoding='utf-8')
+        os.chmod(target, 0o644)
+        write_lines_atomic(str(target), ['new\n'], backup=False)
+        assert os.stat(target).st_mode & 0o777 == 0o644
+
+    def test_backup_preserves_content_bytes(self, tmp_path) -> None:
+        """バックアップは不正バイトも含めてバイト一致で退避される。"""
+        target = tmp_path / 'dnsmasq.conf'
+        raw = b'dhcp-host=aa:bb:cc:dd:ee:02, \xff\xfe, 1.2.3.5\n'
+        target.write_bytes(raw)
+        write_lines_atomic(str(target), ['new\n'], backup=True)
+        assert (tmp_path / 'dnsmasq.conf.bak').read_bytes() == raw

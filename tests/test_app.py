@@ -132,6 +132,12 @@ class TestEscaping:
         text = to_embedded_json({'name': 'a\u2028b\u2029c'})
         assert '\u2028' not in text and '\u2029' not in text
 
+    def test_to_embedded_json_survives_lone_surrogates(self) -> None:
+        """不正バイト由来の単独サロゲートでレスポンス生成が 500 にならない。"""
+        text = to_embedded_json({'line': 'dhcp-host=x, \udcff, 1.2.3.4\n'})
+        assert '\udcff' not in text  # \uXXXX にエスケープされている
+        assert json.loads(text)['line'].endswith('1.2.3.4\n')
+
     def test_to_embedded_json_round_trips(self) -> None:
         original = {'name': 'テスト</script>', 'n': 1}
         assert json.loads(to_embedded_json(original)) == original
