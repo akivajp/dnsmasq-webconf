@@ -10,7 +10,7 @@ ownership of your config file.
 
 [日本語版 README はこちら](README.ja.md)
 
-![Screenshot](https://user-images.githubusercontent.com/4126355/70373854-96a87080-192f-11ea-8c5e-673323248b6d.png)
+![Screenshot](docs/screenshot.png)
 
 ## Why this exists
 

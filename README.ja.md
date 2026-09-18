@@ -9,7 +9,7 @@ dnsmasq の**静的 DHCP 予約**を管理する軽量 Web UI です。
 
 [English README](README.md)
 
-![スクリーンショット](https://user-images.githubusercontent.com/4126355/70373854-96a87080-192f-11ea-8c5e-673323248b6d.png)
+![スクリーンショット](docs/screenshot.png)
 
 ## このツールの位置づけ
 

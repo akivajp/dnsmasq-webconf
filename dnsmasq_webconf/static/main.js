@@ -1,8 +1,13 @@
 // global variables
-var system_hosts = [];
-var leases = [];
-var config = {};
-var read_only = false;
+// system_hosts / leases / config / read_only / refresh_interval は
+// ページ側のインラインスクリプトが先に埋め込んでいる。
+// ここに初期化子を付けた var 宣言を書くと上書きして全テーブルが
+// 空になってしまうため、未定義のときだけ初期化する
+if (typeof system_hosts === 'undefined') { system_hosts = []; }
+if (typeof leases === 'undefined') { leases = []; }
+if (typeof config === 'undefined') { config = {}; }
+if (typeof read_only === 'undefined') { read_only = false; }
+if (typeof refresh_interval === 'undefined') { refresh_interval = 0; }
 var hide_commented = false;
 var config_mac_set = new Set();
 var leased_addr_set = new Set();

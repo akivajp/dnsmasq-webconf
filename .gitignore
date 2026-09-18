@@ -133,3 +133,5 @@ cables.json
 
 .DS_Store
 *.bkp
+# uv
+uv.lock

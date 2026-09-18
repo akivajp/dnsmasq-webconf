@@ -14,7 +14,8 @@
     <script src="/static/vendor/bootstrap.bundle.min.js"></script>
     <script>
       // これらの値は to_embedded_json() で "<" 等をエスケープ済みのため、
-      // 設定ファイルやリース名に </script> が含まれていても脱出できない。
+      // 設定ファイルやリース名にスクリプト終端文字列が含まれていても脱出できない。
+      // 注意: JS コメント内にも終端文字列を書かないこと (ブロックが閉じてしまう)。
       var system_hosts = {{ hosts_json | safe }};
       var leases = {{ leases_json | safe }};
       var config = {{ config_json | safe }};

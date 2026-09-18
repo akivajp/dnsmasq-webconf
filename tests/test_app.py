@@ -6,10 +6,13 @@ from __future__ import annotations
 
 import base64
 import json
+import re
+from pathlib import Path
 
 import pytest
 from webtest import TestApp
 
+import dnsmasq_webconf
 from dnsmasq_webconf.app import Settings, create_app, is_loopback, to_embedded_json
 from dnsmasq_webconf.auth import Credentials
 
@@ -121,6 +124,32 @@ class TestEscaping:
         # script ブロックを閉じる文字列がそのまま出力されていないこと
         assert '</script><script>alert(1)' not in res.text
         assert '\\u003c/script\\u003e' in res.text
+
+    def test_inline_json_is_inside_script_block(self, files) -> None:
+        """テンプレート自身のコメントに script 終端文字列があってはならない。
+
+        v0.2.0 では JS コメント中に "</script>" という文字列があり、
+        ブラウザで script ブロックがそこで閉じて全テーブルが空になった。
+        """
+        res = make_app(files).get('/')
+        assert res.text.count('<script') == res.text.count('</script>')
+        # インライン (src なし) の script ブロック内に終端タグが混入していないこと
+        inline_open = res.text.rindex('<script>')
+        json_pos = res.text.index('var system_hosts = ')
+        assert '</script>' not in res.text[inline_open:json_pos]
+
+    def test_main_js_does_not_clobber_embedded_data(self) -> None:
+        """main.js がページ埋め込みデータのグローバルを上書きしないこと。
+
+        インラインスクリプトは main.js の前に読み込まれる。main.js 側に
+        "var config = {}" のような初期化子付き宣言があると、埋め込んだ
+        データが空のデフォルト値で上書きされ全テーブルが空になる。
+        """
+        js = (Path(dnsmasq_webconf.__file__).parent / 'static' / 'main.js').read_text(
+            encoding='utf-8'
+        )
+        for name in ('system_hosts', 'leases', 'config', 'read_only', 'refresh_interval'):
+            assert not re.search(rf'var\s+{name}\s*=', js), name
 
     def test_to_embedded_json_escapes_dangerous_characters(self) -> None:
         text = to_embedded_json({'name': '</script>&<>'})

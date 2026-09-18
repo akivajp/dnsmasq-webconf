@@ -26,6 +26,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The UI no longer renders empty tables.** In v0.2.0 every table appeared empty:
+  a `</script>` sequence inside a JavaScript comment in the page template closed the
+  script block early, and `main.js` re-declared the embedded data globals
+  (`var config = {}` etc.), overwriting the values the page had embedded. Both are
+  fixed, with regression tests.
 - **Saving a config file no longer breaks files it should not touch.** Reads previously
   used `errors='replace'`, so with one edited line the whole file was rewritten and any
   non-UTF-8 byte in untouched lines was replaced by U+FFFD. Reads and writes now use
