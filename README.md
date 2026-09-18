@@ -43,6 +43,10 @@ not try to compete with it. See [Alternatives](#alternatives) below.
 - **Read-only views** of the DHCP lease table and the system `hosts` file.
 - **Optional reload hook** — run `systemctl reload dnsmasq` (or anything else) after a
   successful save.
+- **Pre-save validation** — run `dnsmasq --test` against the staged result before it
+  touches your config; a rejected save changes nothing.
+- **Live lease table** — the lease view refreshes periodically, so a newly connected
+  device can be reserved the moment it appears.
 - **No database, no build step, no JavaScript toolchain.** Two Python dependencies,
   and all CSS/JS is bundled — it works on an isolated network with no internet access.
 
@@ -93,14 +97,35 @@ also set credentials:
 ```shell
 dnsmasq-webconf --host 0.0.0.0 --auth admin:secret \
     --config /etc/dnsmasq.more.conf \
+    --test-command 'dnsmasq --test -C "{path}"' \
     --reload "systemctl reload dnsmasq"
 ```
 
+`--test-command` validates the staged config with dnsmasq itself before it is put in
+place: `{path}` is replaced with the file being validated (quote it as shown), and a
+non-zero exit status rejects the save, leaving your existing config untouched. It is
+strongly recommended whenever `--reload-command` is used, so a typo in a MAC address
+cannot reach a running dnsmasq.
+
+The lease table auto-refreshes every 30 seconds by default; set
+`--refresh-interval 0` to disable.
+
 To avoid putting the password in your shell history or in `ps` output, use the
-environment variable instead of `--auth`:
+environment variable instead of `--auth`, or pass only the username — you will be
+prompted for the password on the terminal:
 
 ```shell
 DNSMASQ_WEBCONF_AUTH='admin:secret' dnsmasq-webconf --host 0.0.0.0 ...
+# or:
+dnsmasq-webconf --host 0.0.0.0 --auth admin --config /etc/dnsmasq.more.conf
+```
+
+By default the server uses Python's built-in `wsgiref` (single-threaded). Install the
+optional `server` extra for a threaded server so long-running reload commands don't
+stall the UI:
+
+```shell
+pipx install dnsmasq-webconf[server]
 ```
 
 Run `dnsmasq-webconf --help` for the full option list.

@@ -5,6 +5,25 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-19
+
+### Added
+
+- **Pre-save validation** (`--test-command`): the staged result is written to a
+  temporary file and validated (e.g. `dnsmasq --test -C "{path}"`) before it replaces
+  the real config. A failed validation rejects the save and leaves the existing config
+  untouched — no rollback needed, since the real file is never modified first.
+- **Live lease table**: the lease view now refreshes periodically
+  (`--refresh-interval`, default 30 seconds, 0 disables). Editing tables are not
+  touched, so unsaved changes are preserved. A new `/api/leases` endpoint serves the
+  refreshed data (escaping applied, `nosniff` set).
+- `--auth` accepts a username only (`--auth admin`) and prompts for the password on
+  the terminal, keeping it out of shell history and `ps` output.
+- Optional threaded server: `pipx install dnsmasq-webconf[server]` installs waitress
+  and it is used automatically (the built-in `wsgiref` is single-threaded, so a
+  long-running reload command stalled the UI). Debug mode keeps the default server,
+  since the auto-reloader is incompatible with waitress.
+
 ### Fixed
 
 - **Saving a config file no longer breaks files it should not touch.** Reads previously

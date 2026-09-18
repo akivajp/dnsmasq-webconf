@@ -42,6 +42,10 @@ DNS・DHCP・広告ブロックを一体で提供するアプライアンスが�
   手で開いたときにも読める
 - **閲覧専用ビュー** — DHCP リース一覧とシステムの `hosts` ファイル
 - **保存後のリロード** — `systemctl reload dnsmasq` などを任意に実行可能
+- **保存前の検証** — 確定前の設定に対して `dnsmasq --test` を実行し、
+  合格しなければ書き込み自体を行わない (既存ファイルは無傷)
+- **リース一覧の自動更新** — 閲覧専用のリース表を定期的に再取得するため、
+  新しい端末が接続されたらすぐ予約化できる
 - **データベース・ビルド手順・JS ツールチェーン不要** — Python の依存は 2 つだけ。
   CSS/JS はすべて同梱しているため、インターネットに接続できない閉域ネットワークでも動作します
 
@@ -92,14 +96,33 @@ dnsmasq-webconf --config /etc/dnsmasq.more.conf
 ```shell
 dnsmasq-webconf --host 0.0.0.0 --auth admin:secret \
     --config /etc/dnsmasq.more.conf \
+    --test-command 'dnsmasq --test -C "{path}"' \
     --reload "systemctl reload dnsmasq"
 ```
 
+`--test-command` は、確定前の設定を dnsmasq 本体で検証するオプションです。
+`{path}` は検証対象ファイルのパスに置き換えられ (例のように引用符で囲むこと)、
+検証が非 0 で終了した場合は**書き込みを行わず既存の設定をそのまま残します**。
+`--reload-command` と併用する場合は必ず設定することを推奨します
+(MAC アドレスのタイポが動作中の dnsmasq に到達するのを防げるため)。
+
+リース一覧は既定で 30 秒ごとに自動更新されます。`--refresh-interval 0` で無効化できます。
+
 シェル履歴や `ps` の出力にパスワードを残さないため、`--auth` の代わりに
-環境変数を使うことを推奨します。
+環境変数を使うか、ユーザー名だけを渡してパスワードをターミナルで入力する方法があります。
 
 ```shell
 DNSMASQ_WEBCONF_AUTH='admin:secret' dnsmasq-webconf --host 0.0.0.0 ...
+# または:
+dnsmasq-webconf --host 0.0.0.0 --auth admin --config /etc/dnsmasq.more.conf
+```
+
+既定では Python 標準の `wsgiref` (シングルスレッド) を使用します。任意の
+`server` extra を導入するとマルチスレッドのサーバーが使われ、
+reload コマンドの実行中に UI が待たされなくなります。
+
+```shell
+pipx install dnsmasq-webconf[server]
 ```
 
 全オプションは `dnsmasq-webconf --help` で確認できます。
