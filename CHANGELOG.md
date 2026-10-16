@@ -5,6 +5,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-10-16
+
+### Changed
+
+- The Docker image workflow moves to the current major versions of the Docker
+  actions (`login-action` v4, `metadata-action` v6, `build-push-action` v7).
+  The image is rebuilt on the refreshed `python:3.12-slim` base; the application
+  itself is unchanged.
+
 ## [0.3.2] - 2026-09-19
 
 ### Added
