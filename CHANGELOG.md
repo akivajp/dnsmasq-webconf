@@ -5,6 +5,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-10-24
+
 ### Changed
 
 - The *Ignored Hosts* table now says what it is for: a blocklist of MAC addresses
