@@ -4,10 +4,12 @@
 
 from __future__ import annotations
 
+import errno
 import os
 
 import pytest
 
+from dnsmasq_webconf import config as config_module
 from dnsmasq_webconf.config import (
     apply_changes,
     host_to_line,
@@ -249,6 +251,73 @@ class TestFileIO:
         os.chmod(target, 0o644)
         write_lines_atomic(str(target), ['new\n'], backup=False)
         assert os.stat(target).st_mode & 0o777 == 0o644
+
+    def test_falls_back_to_overwrite_when_rename_is_busy(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """bind mount されたファイルは rename できない (EBUSY) ので上書きで保存する。
+
+        Docker で ``-v /path/dnsmasq.conf:/etc/dnsmasq.conf`` とした場合に
+        保存が必ず失敗していた (Issue #14)。
+        """
+        target = tmp_path / 'dnsmasq.conf'
+        target.write_text('old\n', encoding='utf-8')
+        inode = os.stat(target).st_ino
+
+        def busy_replace(src: str, dst: str) -> None:
+            raise OSError(errno.EBUSY, 'Device or resource busy', src, None, dst)
+
+        monkeypatch.setattr(config_module.os, 'replace', busy_replace)
+        write_lines_atomic(str(target), ['new\n'], backup=True)
+        assert target.read_text(encoding='utf-8') == 'new\n'
+        # 置き換えではなく上書きなので inode は変わらない
+        assert os.stat(target).st_ino == inode
+        assert (tmp_path / 'dnsmasq.conf.bak').read_text(encoding='utf-8') == 'old\n'
+        # 一時ファイルが残っていないこと
+        assert sorted(p.name for p in tmp_path.iterdir()) == [
+            'dnsmasq.conf', 'dnsmasq.conf.bak',
+        ]
+
+    def test_other_rename_errors_are_not_swallowed(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """フォールバック対象外のエラーはそのまま送出し、既存ファイルも触らない。"""
+        target = tmp_path / 'dnsmasq.conf'
+        target.write_text('old\n', encoding='utf-8')
+
+        def failing_replace(src: str, dst: str) -> None:
+            raise OSError(errno.ENOSPC, 'No space left on device')
+
+        monkeypatch.setattr(config_module.os, 'replace', failing_replace)
+        with pytest.raises(OSError):
+            write_lines_atomic(str(target), ['new\n'], backup=False)
+        assert target.read_text(encoding='utf-8') == 'old\n'
+        assert [p.name for p in tmp_path.iterdir()] == ['dnsmasq.conf']
+
+    @pytest.mark.skipif(
+        hasattr(os, 'geteuid') and os.geteuid() == 0,
+        reason='root はディレクトリの権限を無視して書き込めるため',
+    )
+    def test_saves_writable_file_in_read_only_directory(self, tmp_path) -> None:
+        """ファイルは書けるがディレクトリは書けない構成でも保存できる。
+
+        Docker で単一ファイルを bind mount し ``--user`` で動かす場合に相当する
+        (README の手順)。一時ファイルも .bak も作れないが、保存は成功させる。
+        """
+        directory = tmp_path / 'etc'
+        directory.mkdir()
+        target = directory / 'dnsmasq.conf'
+        target.write_text('old\n', encoding='utf-8')
+        os.chmod(target, 0o644)
+        os.chmod(directory, 0o555)
+        try:
+            write_lines_atomic(str(target), ['new\n'], backup=True)
+            assert target.read_text(encoding='utf-8') == 'new\n'
+            assert os.stat(target).st_mode & 0o777 == 0o644
+            assert [p.name for p in directory.iterdir()] == ['dnsmasq.conf']
+        finally:
+            # tmp_path の後始末ができるよう権限を戻す
+            os.chmod(directory, 0o755)
 
     def test_backup_preserves_content_bytes(self, tmp_path) -> None:
         """バックアップは不正バイトも含めてバイト一致で退避される。"""

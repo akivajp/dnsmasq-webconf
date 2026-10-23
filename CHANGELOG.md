@@ -5,6 +5,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Saving failed in Docker** when the config file was bind-mounted on its own
+  (`-v /etc/dnsmasq.more.conf:/etc/dnsmasq.more.conf`, as the README shows):
+  `Device or resource busy` as root, `Permission denied` with `--user`. When the file
+  cannot be replaced by rename, it is now overwritten in place; if no backup can be
+  written next to it, a warning is logged and the save goes ahead (#14).
+
 ## [0.3.3] - 2026-10-16
 
 ### Changed

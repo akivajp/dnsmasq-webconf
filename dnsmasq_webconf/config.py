@@ -11,12 +11,22 @@ bottle などの Web フレームワークには一切依存しない (テスト
 from __future__ import annotations
 
 import datetime
+import errno
+import logging
 import os
 import re
 import shutil
 import stat as stat_module
 import tempfile
 from typing import Any, Iterable
+
+logger = logging.getLogger(__name__)
+
+# rename による置き換えができないときに返る errno。
+# EBUSY: 対象が bind mount されたファイル (Docker で単一ファイルを -v した場合など)
+# EXDEV: 一時ファイルと対象が別のファイルシステム上にある
+# EACCES / EPERM: 対象ファイルは書けるが、親ディレクトリに書き込み権限が無い
+_RENAME_FALLBACK_ERRNOS = frozenset({errno.EBUSY, errno.EXDEV, errno.EACCES, errno.EPERM})
 
 # ホスト名として妥当と見なす文字列 (従来版と同一の判定)
 RE_HOST_NAME = re.compile(r'[a-zA-Z][-_a-zA-Z0-9]*')
@@ -259,7 +269,14 @@ def stage_temp(path: str, lines: list[str]) -> str:
         作成した一時ファイルのパス。
     """
     directory = os.path.dirname(os.path.abspath(path)) or '.'
-    fd, tmp_path = tempfile.mkstemp(dir=directory, prefix='.dnsmasq-webconf-')
+    try:
+        fd, tmp_path = tempfile.mkstemp(dir=directory, prefix='.dnsmasq-webconf-')
+    except PermissionError:
+        # 対象ファイルは書けてもディレクトリには書けない構成がある
+        # (Docker で単一ファイルを bind mount し --user で動かす場合など)。
+        # その場合はシステムの一時ディレクトリに作り、昇格時は
+        # promote_staged が上書き書き込みへフォールバックする。
+        fd, tmp_path = tempfile.mkstemp(prefix='.dnsmasq-webconf-')
     with os.fdopen(fd, 'w', encoding='utf-8', errors='surrogateescape') as fobj:
         fobj.writelines(lines)
         fobj.flush()
@@ -281,6 +298,11 @@ def stage_temp(path: str, lines: list[str]) -> str:
 def promote_staged(path: str, tmp_path: str, backup: bool = True) -> None:
     """検証済みの一時ファイルを正式な保存先へ置き換える。
 
+    通常は ``os.replace`` で原子的に差し替える。bind mount されたファイルや
+    親ディレクトリに書き込めない場合など rename できないときは、
+    既存ファイルへの上書き書き込みにフォールバックする (inode は変わらない)。
+    この経路は原子的ではないが、それ以外に保存する手段が無い。
+
     Args:
         path: 書き出し先のパス。
         tmp_path: :func:`stage_temp` が返した一時ファイルのパス。
@@ -288,8 +310,36 @@ def promote_staged(path: str, tmp_path: str, backup: bool = True) -> None:
     """
     if backup and os.path.isfile(path):
         # 直前の内容を 1 世代だけ退避する (copy2 でメタデータごと保持する)
-        shutil.copy2(path, path + '.bak')
-    os.replace(tmp_path, path)
+        try:
+            shutil.copy2(path, path + '.bak')
+        except PermissionError as exc:
+            # ディレクトリに書き込めない構成ではバックアップを作れない。
+            # 保存自体は可能なので、警告に留めて続行する。
+            logger.warning('Could not create backup %s.bak: %s', path, exc)
+    try:
+        os.replace(tmp_path, path)
+    except OSError as exc:
+        if exc.errno not in _RENAME_FALLBACK_ERRNOS:
+            raise
+        logger.info(
+            'Cannot replace %s by rename (%s); overwriting it in place',
+            path, errno.errorcode.get(exc.errno, exc.errno),
+        )
+        _overwrite_in_place(tmp_path, path)
+        os.unlink(tmp_path)
+
+
+def _overwrite_in_place(src_path: str, dst_path: str) -> None:
+    """``src_path`` の内容で ``dst_path`` を上書きする (inode・権限は維持される)。
+
+    Args:
+        src_path: 書き込む内容を持つファイル。
+        dst_path: 上書き対象のファイル。
+    """
+    with open(src_path, 'rb') as src, open(dst_path, 'wb') as dst:
+        shutil.copyfileobj(src, dst)
+        dst.flush()
+        os.fsync(dst.fileno())
 
 
 def write_lines_atomic(path: str, lines: list[str], backup: bool = True) -> None:
