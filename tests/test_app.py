@@ -13,7 +13,13 @@ import pytest
 from webtest import TestApp
 
 import dnsmasq_webconf
-from dnsmasq_webconf.app import Settings, create_app, is_loopback, to_embedded_json
+from dnsmasq_webconf.app import (
+    Settings,
+    build_parser,
+    create_app,
+    is_loopback,
+    to_embedded_json,
+)
 from dnsmasq_webconf.auth import Credentials
 
 CONFIG_BODY = (
@@ -103,6 +109,20 @@ class TestIndex:
         # 文字列 "null" が真と評価されてセクションが出てしまう旧バグの回帰テスト
         assert 'DHCP Leases' not in res.text
         assert "System's hosts file" not in res.text
+
+    def test_empty_hosts_option_hides_hosts_table(self, files) -> None:
+        """``--hosts ''`` で hosts 一覧を非表示にできる (Issue #15 で案内した手順)。"""
+        args = build_parser().parse_args(['--hosts', ''])
+        settings = Settings(
+            hosts_file=args.hosts,
+            leases_file=str(files['leases']),
+            config_file=str(files['config']),
+        )
+        res = TestApp(create_app(settings)).get('/')
+        assert res.status_code == 200
+        assert "System's hosts file" not in res.text
+        # 他の一覧は通常どおり表示される
+        assert 'DHCP Leases' in res.text
 
     def test_read_only_hides_save_controls(self, files) -> None:
         res = make_app(files, read_only=True).get('/')

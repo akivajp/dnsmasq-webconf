@@ -13,6 +13,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   cannot be replaced by rename, it is now overwritten in place; if no backup can be
   written next to it, a warning is logged and the save goes ahead (#14).
 
+### Documentation
+
+- Document that `--hosts ''` hides the hosts table, and that in Docker the table
+  shows the container's own `/etc/hosts` (#15).
+
 ## [0.3.3] - 2026-10-16
 
 ### Changed

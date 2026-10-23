@@ -90,6 +90,11 @@ docker run --rm -p 8080:8080 \
     dnsmasq-webconf
 ```
 
+Inside the container, `/etc/hosts` is the container's own file, not the host's.
+Arguments after the image name replace the default `8080 --host 0.0.0.0`, so append
+`8080 --host 0.0.0.0 --hosts ''` to hide that table, or mount the host's file with
+`-v /etc/hosts:/host/hosts:ro` and pass `--hosts /host/hosts` instead.
+
 ### From source
 
 ```shell
@@ -124,6 +129,9 @@ cannot reach a running dnsmasq.
 
 The lease table auto-refreshes every 30 seconds by default; set
 `--refresh-interval 0` to disable.
+
+The read-only hosts table shows `/etc/hosts`; point `--hosts` at another file, or
+pass `--hosts ''` to hide it.
 
 To avoid putting the password in your shell history or in `ps` output, use the
 environment variable instead of `--auth`, or pass only the username — you will be

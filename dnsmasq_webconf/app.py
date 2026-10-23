@@ -372,7 +372,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         '--hosts', '-H', type=str, default=DEFAULT_HOSTS,
-        help=f'hosts ファイルのパス (既定: {DEFAULT_HOSTS})',
+        help=f'hosts ファイルのパス。空文字 (\'\') で一覧を非表示 (既定: {DEFAULT_HOSTS})',
     )
     parser.add_argument(
         '--leases', '-L', type=str, default=DEFAULT_LEASES,
