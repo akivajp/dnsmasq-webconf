@@ -15,17 +15,17 @@ JQUERY_URL="https://code.jquery.com/jquery-${JQUERY_VERSION}.min.js"
 BOOTSTRAP_CSS_URL="https://cdn.jsdelivr.net/npm/bootstrap@${BOOTSTRAP_VERSION}/dist/css/bootstrap.min.css"
 BOOTSTRAP_JS_URL="https://cdn.jsdelivr.net/npm/bootstrap@${BOOTSTRAP_VERSION}/dist/js/bootstrap.bundle.min.js"
 
-echo "アセットを取得しています..."
+echo "Fetching assets..."
 curl -sSfL --max-time 60 -o jquery.min.js "$JQUERY_URL"
 curl -sSfL --max-time 60 -o bootstrap.min.css "$BOOTSTRAP_CSS_URL"
 curl -sSfL --max-time 60 -o bootstrap.bundle.min.js "$BOOTSTRAP_JS_URL"
 
 # Record the source and sha384 (same format as SRI) so authenticity can be verified later
 {
-  echo "# 同梱サードパーティアセット"
+  echo "# Bundled third-party assets"
   echo "#"
-  echo "# 各ファイルの取得元と sha384 (Subresource Integrity と同形式)。"
-  echo "# 更新時は scripts/update-vendor.sh を実行し、本ファイルも更新すること。"
+  echo "# Source URL and sha384 of each file (same format as Subresource Integrity)."
+  echo "# To update, run scripts/update-vendor.sh and commit this file as well."
   echo
   for entry in \
     "jquery.min.js|$JQUERY_URL|MIT (OpenJS Foundation)" \
@@ -38,4 +38,4 @@ curl -sSfL --max-time 60 -o bootstrap.bundle.min.js "$BOOTSTRAP_JS_URL"
   done
 } > MANIFEST.txt
 
-echo "完了しました。MANIFEST.txt の差分を確認してください。"
+echo "Done. Review the diff of MANIFEST.txt."

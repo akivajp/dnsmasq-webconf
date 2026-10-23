@@ -5,6 +5,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- CLI help, log messages and error messages are now in English, matching the web
+  UI. Code comments and docstrings are in English as well.
+- The startup log shows `disabled` instead of `not found` for a file given as an
+  empty path (e.g. `--hosts ''`).
+
 ### Fixed
 
 - **Saving failed in Docker** when the config file was bind-mounted on its own

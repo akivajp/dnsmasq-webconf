@@ -134,7 +134,7 @@ class TestBrowserSmoke:
 
         # script start and end tags must pair up (regression guard for v0.2.0)
         assert parser.script_open == parser.script_close, (
-            'script ブロックの開始と終了が一致しない '
+            'script start and end tags do not match '
             f'(open={parser.script_open}, close={parser.script_close})'
         )
         # Embedded data must not be wiped by JS overwrites (var initializer regression).

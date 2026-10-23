@@ -24,7 +24,7 @@ from dnsmasq_webconf.app import main  # noqa: E402
 
 if __name__ == '__main__':
     sys.stderr.write(
-        '[注意] app/index.py は後方互換のために残されています。'
-        '今後は `dnsmasq-webconf` コマンドを使用してください。\n'
+        '[Note] app/index.py is kept only for backward compatibility. '
+        'Use the `dnsmasq-webconf` command instead.\n'
     )
     sys.exit(main())

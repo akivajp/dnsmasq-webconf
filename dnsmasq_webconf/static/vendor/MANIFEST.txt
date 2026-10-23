@@ -1,7 +1,7 @@
-# 同梱サードパーティアセット
+# Bundled third-party assets
 #
-# 各ファイルの取得元と sha384 (Subresource Integrity と同形式)。
-# 更新時は scripts/update-vendor.sh を実行し、本ファイルも更新すること。
+# Source URL and sha384 of each file (same format as Subresource Integrity).
+# To update, run scripts/update-vendor.sh and commit this file as well.
 
 jquery.min.js
   url: https://code.jquery.com/jquery-3.7.1.min.js

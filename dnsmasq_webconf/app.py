@@ -145,12 +145,12 @@ def run_command(
             timeout=COMMAND_TIMEOUT,
         )
     except subprocess.TimeoutExpired:
-        logger.error('コマンドがタイムアウトしました: %s', command)
+        logger.error('Command timed out: %s', command)
         return {'command': command, 'returncode': None, 'output': 'timeout'}
     output = (completed.stdout + completed.stderr).strip()[:2000]
     if completed.returncode != 0:
         logger.error(
-            'コマンドが失敗しました (code=%s): %s', completed.returncode, output
+            'Command failed (code=%s): %s', completed.returncode, output
         )
     return {
         'command': command,
@@ -242,13 +242,13 @@ def create_app(settings: Settings) -> bottle.Bottle:
         bottle.response.headers['Cache-Control'] = 'no-store'
 
         if settings.read_only:
-            raise bottle.HTTPError(403, '読み取り専用モードで動作しています')
+            raise bottle.HTTPError(403, 'The server is running in read-only mode')
         if not settings.config_file:
-            raise bottle.HTTPError(400, '設定ファイルが指定されていません')
+            raise bottle.HTTPError(400, 'No config file is specified')
 
         data = bottle.request.json
         if not isinstance(data, dict):
-            raise bottle.HTTPError(400, 'JSON 形式の本文が必要です')
+            raise bottle.HTTPError(400, 'A JSON request body is required')
 
         lines = read_lines(settings.config_file) or []
         targets = list(data.get('hosts') or []) + list(data.get('ignored_hosts') or [])
@@ -319,9 +319,9 @@ def resolve_auth(spec: str | None) -> Credentials | None:
     if ':' in spec:
         return Credentials.parse(spec)
     import getpass
-    password = getpass.getpass(f'BASIC 認証のパスワード ({spec}): ')
+    password = getpass.getpass(f'Password for BASIC auth ({spec}): ')
     if not password:
-        raise ValueError('パスワードが入力されませんでした')
+        raise ValueError('no password was entered')
     return Credentials(spec, password)
 
 
@@ -349,14 +349,14 @@ def build_parser() -> argparse.ArgumentParser:
     """
     parser = argparse.ArgumentParser(
         prog='dnsmasq-webconf',
-        description='dnsmasq の静的 DHCP 予約を編集する軽量 Web UI',
+        description='Lightweight web UI for editing dnsmasq static DHCP reservations',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
-            '例:\n'
-            '  # ローカルからのみ利用する (既定)\n'
+            'Examples:\n'
+            '  # Local access only (default)\n'
             '  dnsmasq-webconf --config /etc/dnsmasq.more.conf\n'
             '\n'
-            '  # LAN へ公開する (認証が必須)\n'
+            '  # Expose it on the LAN (authentication is required)\n'
             '  dnsmasq-webconf --host 0.0.0.0 --auth admin:secret \\\n'
             '      --config /etc/dnsmasq.more.conf \\\n'
             '      --test-command \'dnsmasq --test -C "{path}"\' \\\n'
@@ -365,58 +365,71 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         'port', nargs='?', type=int, default=DEFAULT_PORT,
-        help=f'待ち受けポート番号 (既定: {DEFAULT_PORT})',
+        help=f'port to listen on (default: {DEFAULT_PORT})',
     )
     parser.add_argument(
         '--host', type=str, default=DEFAULT_HOST,
-        help=f'待ち受けアドレス (既定: {DEFAULT_HOST})',
+        help=f'address to listen on (default: {DEFAULT_HOST})',
     )
     parser.add_argument(
         '--hosts', '-H', type=str, default=DEFAULT_HOSTS,
-        help=f'hosts ファイルのパス。空文字 (\'\') で一覧を非表示 (既定: {DEFAULT_HOSTS})',
+        help=(
+            f"path to the hosts file; '' hides the hosts table "
+            f'(default: {DEFAULT_HOSTS})'
+        ),
     )
     parser.add_argument(
         '--leases', '-L', type=str, default=DEFAULT_LEASES,
-        help=f'dnsmasq リースファイルのパス (既定: {DEFAULT_LEASES})',
+        help=f'path to the dnsmasq leases file (default: {DEFAULT_LEASES})',
     )
     parser.add_argument(
         '--config', '-C', type=str, default=DEFAULT_CONFIG,
-        help=f'編集対象の dnsmasq 設定ファイル (既定: {DEFAULT_CONFIG})',
+        help=f'dnsmasq config file to edit (default: {DEFAULT_CONFIG})',
     )
     parser.add_argument(
         '--reload-command', '--reload', '-R', type=str, default=None,
-        help='保存後に実行するコマンド (例: "systemctl reload dnsmasq")',
+        help='command to run after saving (e.g. "systemctl reload dnsmasq")',
     )
     parser.add_argument(
         '--test-command', '-T', type=str, default=None,
         help=(
-            '保存前に実行する検証コマンド。{path} が対象ファイルのパスに置き換わる '
-            '(例: \'dnsmasq --test -C "{path}"\')。合格しなければ書き込みを行わない'
+            'validation command to run before saving; {path} is replaced with the '
+            'path of the file to check (e.g. \'dnsmasq --test -C "{path}"\'). '
+            'Nothing is written unless it succeeds'
         ),
     )
     parser.add_argument(
         '--refresh-interval', type=int, default=30, metavar='SECONDS',
-        help='リース一覧の自動更新間隔 (秒)。0 で無効化 (既定: 30)',
+        help=(
+            'auto-refresh interval of the lease table in seconds; '
+            '0 disables it (default: 30)'
+        ),
     )
     parser.add_argument(
         '--auth', '-A', type=str, default=None, metavar='USER:PASSWORD',
-        help='BASIC 認証を有効にする。環境変数 DNSMASQ_WEBCONF_AUTH でも指定可',
+        help='enable BASIC authentication (can also be set via DNSMASQ_WEBCONF_AUTH)',
     )
     parser.add_argument(
         '--allow-no-auth', action='store_true',
-        help='認証なしで外部アドレスへ公開することを明示的に許可する (非推奨)',
+        help=(
+            'explicitly allow serving on a non-loopback address '
+            'without authentication (not recommended)'
+        ),
     )
     parser.add_argument(
         '--read-only', action='store_true',
-        help='閲覧専用で起動し、保存 API を無効化する',
+        help='start in view-only mode with the save API disabled',
     )
     parser.add_argument(
         '--no-backup', action='store_true',
-        help='保存時に .bak ファイルを作成しない',
+        help='do not create a .bak file when saving',
     )
     parser.add_argument(
         '--debug', action='store_true',
-        help='デバッグモードで起動する (詳細ログと自動リロード。公開環境では使用しないこと)',
+        help=(
+            'run in debug mode (verbose logs and auto-reload; '
+            'do not use on exposed servers)'
+        ),
     )
     parser.add_argument(
         '--version', action='version', version=f'%(prog)s {__version__}',
@@ -447,22 +460,22 @@ def main(argv: list[str] | None = None) -> int:
             args.auth or os.environ.get('DNSMASQ_WEBCONF_AUTH')
         )
     except ValueError as exc:
-        logger.error('--auth の指定が不正です: %s', exc)
+        logger.error('Invalid --auth value: %s', exc)
         return 2
 
     # Exposing without auth would let anyone rewrite the DHCP reservations
     if credentials is None and not is_loopback(args.host) and not args.read_only:
         if not args.allow_no_auth:
             logger.error(
-                '認証なしで %s へ公開しようとしています。'
-                '--auth USER:PASSWORD を指定するか、'
-                '意図的であれば --allow-no-auth を付けてください。',
+                'Refusing to serve on %s without authentication. '
+                'Set --auth USER:PASSWORD, '
+                'or add --allow-no-auth if this is intentional.',
                 args.host,
             )
             return 2
         logger.warning(
-            '認証なしで %s へ公開しています。'
-            'ネットワーク上の誰でも dnsmasq の設定を書き換えられます。',
+            'Serving on %s without authentication. '
+            'Anyone on the network can rewrite the dnsmasq config.',
             args.host,
         )
 
@@ -482,11 +495,15 @@ def main(argv: list[str] | None = None) -> int:
     for label, path in (
         ('config', args.config), ('leases', args.leases), ('hosts', args.hosts),
     ):
-        state = 'OK' if path and os.path.isfile(path) else '見つかりません'
+        if not path:
+            # An empty path (e.g. --hosts '') hides that table on purpose
+            state = 'disabled'
+        else:
+            state = 'OK' if os.path.isfile(path) else 'not found'
         logger.info('%-7s %s (%s)', label, path, state)
-    logger.info('認証: %s', '有効' if credentials else '無効')
+    logger.info('Authentication: %s', 'enabled' if credentials else 'disabled')
     if args.read_only:
-        logger.info('読み取り専用モードで起動します')
+        logger.info('Starting in read-only mode')
 
     app = create_app(settings)
 
@@ -499,9 +516,9 @@ def main(argv: list[str] | None = None) -> int:
         try:
             import waitress  # noqa: F401
             server = 'waitress'
-            logger.info('HTTP サーバー: waitress (マルチスレッド)')
+            logger.info('HTTP server: waitress (multi-threaded)')
         except ImportError:
-            logger.info('HTTP サーバー: wsgiref ( waitress を導入するとマルチスレッドになります)')
+            logger.info('HTTP server: wsgiref (install waitress for multi-threading)')
     bottle.run(
         app=app,
         host=args.host,

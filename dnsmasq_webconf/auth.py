@@ -43,10 +43,10 @@ class Credentials:
             ValueError: If the format is invalid, or the user name or password is empty.
         """
         if ':' not in spec:
-            raise ValueError('認証情報は "user:password" 形式で指定してください')
+            raise ValueError('credentials must be in the form "user:password"')
         user, password = spec.split(':', 1)
         if not user or not password:
-            raise ValueError('ユーザー名とパスワードは空にできません')
+            raise ValueError('user name and password must not be empty')
         return cls(user, password)
 
     def verify(self, user: str | None, password: str | None) -> bool:
@@ -118,7 +118,7 @@ def make_auth_plugin(
                     # Return WWW-Authenticate to prompt the browser to authenticate
                     raise bottle.HTTPError(
                         401,
-                        '認証が必要です',
+                        'Authentication required',
                         **{'WWW-Authenticate': f'Basic realm="{realm}"'},
                     )
             return func(*args, **kwargs)
@@ -139,4 +139,4 @@ def require_same_origin() -> None:
     origin = bottle.request.get_header('Origin')
     host = bottle.request.get_header('Host')
     if not is_same_origin(origin, host):
-        raise bottle.HTTPError(403, 'クロスオリジンからの要求は拒否されました')
+        raise bottle.HTTPError(403, 'Cross-origin requests are rejected')
