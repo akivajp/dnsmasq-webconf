@@ -67,7 +67,7 @@ pipx install dnsmasq-webconf
 
 ### Docker を使う場合
 
-ビルド済みイメージを GHCR で公開しています:
+`linux/amd64` と `linux/arm64` 向けのビルド済みイメージを GHCR で公開しています:
 
 ```shell
 docker run --rm -p 8080:8080 \

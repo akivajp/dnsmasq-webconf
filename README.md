@@ -67,7 +67,7 @@ pipx install dnsmasq-webconf
 
 ### With Docker
 
-Pre-built images are published to GHCR:
+Pre-built images for `linux/amd64` and `linux/arm64` are published to GHCR:
 
 ```shell
 docker run --rm -p 8080:8080 \

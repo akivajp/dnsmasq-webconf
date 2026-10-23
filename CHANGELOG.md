@@ -5,6 +5,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-10-23
+
+### Added
+
+- The Docker image is published for `linux/arm64` (e.g. Raspberry Pi 4) as well as
+  `linux/amd64` (#13, thanks @elad-eyal).
+
 ### Changed
 
 - CLI help, log messages and error messages are now in English, matching the web
