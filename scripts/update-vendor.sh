@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# 同梱するフロントエンドアセットを更新し、MANIFEST.txt を再生成する。
+# Update the bundled frontend assets and regenerate MANIFEST.txt.
 #
-# 使い方: scripts/update-vendor.sh
+# Usage: scripts/update-vendor.sh
 set -euo pipefail
 
 JQUERY_VERSION="3.7.1"
@@ -20,7 +20,7 @@ curl -sSfL --max-time 60 -o jquery.min.js "$JQUERY_URL"
 curl -sSfL --max-time 60 -o bootstrap.min.css "$BOOTSTRAP_CSS_URL"
 curl -sSfL --max-time 60 -o bootstrap.bundle.min.js "$BOOTSTRAP_JS_URL"
 
-# 取得元と sha384 (SRI と同形式) を記録し、後から真正性を検証できるようにする
+# Record the source and sha384 (same format as SRI) so authenticity can be verified later
 {
   echo "# 同梱サードパーティアセット"
   echo "#"

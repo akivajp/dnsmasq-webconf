@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 対応を宣言している下限・中間・最新の Python で検証する
+        # Test on the oldest, a middle, and the newest of the declared supported Python versions
         python-version: ['3.9', '3.11', '3.13']
     steps:
       - uses: actions/checkout@v7

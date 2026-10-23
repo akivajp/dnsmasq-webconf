@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""headless Chrome を使った描画スモークテスト。
+"""Rendering smoke test using headless Chrome.
 
-Python 側のテスト (webtest) は JavaScript の実行結果を検証できない。
-v0.2.0 ではテンプレートの JS コメント内に ``</script>`` があり、
-v0.3.0 開発中には main.js の ``var config = {}`` がページ埋め込みデータを
-上書きする、という「pytest では絶対に検知できない」全テーブル空描画バグが
-2 回連続で発生した。本テストは実際のブラウザでページを描画し、
-tbody にデータ行が現れることを確認する。
+The Python-side tests (webtest) cannot verify the results of running JavaScript.
+Twice in a row we hit a bug, "impossible to detect with pytest", where every table
+rendered empty: in v0.2.0 a JS comment in the template contained ``</script>``,
+and during v0.3.0 development ``var config = {}`` in main.js overwrote the data
+embedded in the page. This test renders the page in a real browser and checks
+that data rows appear in each tbody.
 
-headless Chrome / Chromium が無い環境ではスキップする。
+Skipped where headless Chrome / Chromium is not available.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ HOSTS_BODY = '127.0.0.1\tlocalhost\n192.168.1.1\trouter\n'
 
 
 def _find_browser() -> str | None:
-    """headless として使えるブラウザの実行パスを返す (無ければ None)。"""
+    """Return the path of a browser usable in headless mode (None if none)."""
     for name in (
         'google-chrome',
         'google-chrome-stable',
@@ -53,14 +53,14 @@ def _find_browser() -> str | None:
 
 
 class _QuietHandler(WSGIRequestHandler):
-    """アクセスログを stderr に出さないハンドラ。"""
+    """Handler that does not write access logs to stderr."""
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
         return
 
 
 class _TableRowParser(HTMLParser):
-    """thead / tbody の行数を数えるパーサー。"""
+    """Parser that counts rows in thead / tbody."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -89,7 +89,7 @@ class _TableRowParser(HTMLParser):
 
 @pytest.fixture
 def server(tmp_path) -> Iterator[str]:
-    """テスト用アプリをエフェメラルポートで起動し、ベース URL を返す。"""
+    """Start the test app on an ephemeral port and return its base URL."""
     config = tmp_path / 'dnsmasq.more.conf'
     leases = tmp_path / 'dnsmasq.leases'
     hosts = tmp_path / 'hosts'
@@ -115,10 +115,10 @@ def server(tmp_path) -> Iterator[str]:
 
 @pytest.mark.skipif(_find_browser() is None, reason='headless browser not available')
 class TestBrowserSmoke:
-    """実際のブラウザで描画させるスモークテスト。"""
+    """Smoke tests that render the page in a real browser."""
 
     def test_tables_render_rows(self, server: str, tmp_path) -> None:
-        """ページを開くと各テーブルの tbody にデータ行が描画される。"""
+        """Opening the page renders data rows into each table's tbody."""
         browser = _find_browser()
         assert browser is not None
         dom = subprocess.run(
@@ -132,16 +132,16 @@ class TestBrowserSmoke:
         parser = _TableRowParser()
         parser.feed(dom)
 
-        # script タグの開始・終了が対になっていること (v0.2.0 の回帰防止)
+        # script start and end tags must pair up (regression guard for v0.2.0)
         assert parser.script_open == parser.script_close, (
             'script ブロックの開始と終了が一致しない '
             f'(open={parser.script_open}, close={parser.script_close})'
         )
-        # 埋め込みデータが JS 上書きで消えていないこと (var 初期化子の回帰防止)。
-        # tbody 行数: dhcp-hosts 2 + dhcp-leases 2 + ignored 0 + system-hosts 2 = 6
+        # Embedded data must not be wiped by JS overwrites (var initializer regression).
+        # tbody rows: dhcp-hosts 2 + dhcp-leases 2 + ignored 0 + system-hosts 2 = 6
         assert parser.tbody_rows >= 6, (
             f'table rows were not rendered (tbody rows = {parser.tbody_rows}); '
             'embedded data may be clobbered or scripts failed to run'
         )
-        # ページ生成物は一時領域に残さないため、ダンプを検査用に保管する
+        # Page output is not kept in a temp area, so save the dump for inspection
         (tmp_path / 'rendered.html').write_text(dom, encoding='utf-8')

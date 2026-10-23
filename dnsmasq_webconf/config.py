@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""dnsmasq 設定ファイル・リースファイル・hosts ファイルの解析と書き出し。
+"""Parsing and writing of dnsmasq config files, lease files, and hosts files.
 
-このモジュールは副作用を持たない純粋な処理のみを集めており、
-bottle などの Web フレームワークには一切依存しない (テスト容易性のため)。
+This module contains only pure, side-effect-free logic and does not depend on
+any web framework such as bottle (for testability).
 
-パース仕様は従来版 (app/index.py) と互換性を保っている。
+The parsing rules remain compatible with the legacy version (app/index.py).
 """
 
 from __future__ import annotations
@@ -22,32 +22,32 @@ from typing import Any, Iterable
 
 logger = logging.getLogger(__name__)
 
-# rename による置き換えができないときに返る errno。
-# EBUSY: 対象が bind mount されたファイル (Docker で単一ファイルを -v した場合など)
-# EXDEV: 一時ファイルと対象が別のファイルシステム上にある
-# EACCES / EPERM: 対象ファイルは書けるが、親ディレクトリに書き込み権限が無い
+# errno values returned when the file cannot be replaced by rename.
+# EBUSY: the target is a bind-mounted file (e.g. a single file passed via -v in Docker)
+# EXDEV: the temp file and the target are on different filesystems
+# EACCES / EPERM: the target file is writable, but its parent directory is not
 _RENAME_FALLBACK_ERRNOS = frozenset({errno.EBUSY, errno.EXDEV, errno.EACCES, errno.EPERM})
 
-# ホスト名として妥当と見なす文字列 (従来版と同一の判定)
+# Strings considered valid host names (same check as the legacy version)
 RE_HOST_NAME = re.compile(r'[a-zA-Z][-_a-zA-Z0-9]*')
 
-# 設定ファイル中で扱う対象のディレクティブ
+# Directive handled in the config file
 DHCP_HOST_PREFIX = 'dhcp-host='
 
 
 def parse_hosts(lines: Iterable[str]) -> list[dict[str, Any]]:
-    """hosts ファイル形式 (``/etc/hosts``) を解析する。
+    """Parse the hosts file format (``/etc/hosts``).
 
     Args:
-        lines: 行の並び (末尾の改行は含んでいてもよい)。
+        lines: Sequence of lines (may include trailing newlines).
 
     Returns:
-        ``{'num', 'addr', 'names'}`` を持つ辞書のリスト。
+        A list of dicts with ``{'num', 'addr', 'names'}``.
     """
     hosts: list[dict[str, Any]] = []
     for line in lines:
         line = line.strip()
-        # 空行と行頭コメントは読み飛ばす
+        # Skip blank lines and lines starting with a comment
         if not line or line[0] == '#':
             continue
         fields = line.split()
@@ -57,7 +57,7 @@ def parse_hosts(lines: Iterable[str]) -> list[dict[str, Any]]:
         for field in fields[1:]:
             field = field.strip()
             if field.startswith('#'):
-                # "#" 以降は行末コメントなので打ち切る
+                # Everything after "#" is a trailing comment, so stop here
                 break
             names.append(field)
         if names:
@@ -70,14 +70,14 @@ def parse_hosts(lines: Iterable[str]) -> list[dict[str, Any]]:
 
 
 def parse_leases(lines: Iterable[str]) -> list[dict[str, Any]]:
-    """dnsmasq のリースファイルを解析する。
+    """Parse a dnsmasq lease file.
 
     Args:
-        lines: 行の並び。各行は
-            ``<有効期限epoch> <MAC> <IP> <ホスト名> <クライアントID>`` 形式。
+        lines: Sequence of lines. Each line has the form
+            ``<expiry-epoch> <MAC> <IP> <hostname> <client-id>``.
 
     Returns:
-        リース情報の辞書のリスト。
+        A list of lease info dicts.
     """
     leases: list[dict[str, Any]] = []
     for line in lines:
@@ -92,7 +92,7 @@ def parse_leases(lines: Iterable[str]) -> list[dict[str, Any]]:
             'name': fields[3],
             'id': fields[4],
         }
-        # epoch が壊れている行でも UI 全体を落とさないようにする
+        # Do not let a line with a broken epoch bring down the whole UI
         try:
             lease['timestamp'] = str(
                 datetime.datetime.fromtimestamp(float(fields[0]))
@@ -104,13 +104,13 @@ def parse_leases(lines: Iterable[str]) -> list[dict[str, Any]]:
 
 
 def _parse_dhcp_host(remain: str) -> dict[str, Any]:
-    """``dhcp-host=`` の値部分を解析してホスト辞書を組み立てる。
+    """Parse the value part of ``dhcp-host=`` and build a host dict.
 
     Args:
-        remain: ``dhcp-host=`` を除いた値部分 (行末コメントは除去済み)。
+        remain: The value part without ``dhcp-host=`` (trailing comment removed).
 
     Returns:
-        解析結果の辞書。判別できなかったフィールドは ``extra`` に退避する。
+        The parsed dict. Fields that could not be identified go into ``extra``.
     """
     host: dict[str, Any] = {}
     mac_list: list[str] = []
@@ -118,17 +118,17 @@ def _parse_dhcp_host(remain: str) -> dict[str, Any]:
     for field in remain.split(','):
         field = field.strip()
         if len(field.split(':')) == 6:
-            # コロン区切り 6 個 = MAC アドレス
+            # Six colon-separated parts = MAC address
             mac_list.append(field)
         elif len(field.split('.')) == 4 and field.split('.')[0].isdigit():
-            # ドット区切り 4 個かつ先頭が数字 = IPv4 アドレス
+            # Four dot-separated parts starting with a digit = IPv4 address
             host['addr'] = field
         elif field == 'infinite':
             host['lease'] = field
         elif field == 'ignore':
             host['ignore'] = True
         elif field[:1].isdigit():
-            # 数字始まり = リース期間 (例: 12h)
+            # Starts with a digit = lease time (e.g. 12h)
             host['lease'] = field
         elif RE_HOST_NAME.fullmatch(field):
             host['name'] = field
@@ -140,16 +140,16 @@ def _parse_dhcp_host(remain: str) -> dict[str, Any]:
 
 
 def parse_config(lines: Iterable[str]) -> dict[str, Any]:
-    """dnsmasq 設定ファイルから ``dhcp-host=`` 行のみを抽出して解析する。
+    """Extract and parse only the ``dhcp-host=`` lines of a dnsmasq config file.
 
-    ``dhcp-host=`` 以外の行は解析対象外だが、保存時には原文のまま保持される。
+    Lines other than ``dhcp-host=`` are not parsed, but are kept verbatim on save.
 
     Args:
-        lines: 行の並び。
+        lines: Sequence of lines.
 
     Returns:
-        ``{'hosts', 'ignored_hosts', 'num_lines'}`` を持つ辞書。
-        ``ignore`` 指定のあるホストは ``ignored_hosts`` 側に振り分けられる。
+        A dict with ``{'hosts', 'ignored_hosts', 'num_lines'}``.
+        Hosts with ``ignore`` set are sorted into ``ignored_hosts``.
     """
     hosts: list[dict[str, Any]] = []
     ignored_hosts: list[dict[str, Any]] = []
@@ -157,7 +157,7 @@ def parse_config(lines: Iterable[str]) -> dict[str, Any]:
     for i, line in enumerate(lines):
         num_lines = i + 1
         remain = line.strip()
-        # 行頭が "#" ならコメントアウトされた (無効な) エントリとして扱う
+        # A leading "#" means a commented-out (disabled) entry
         commented = False
         if remain[:1] == '#':
             commented = True
@@ -167,7 +167,7 @@ def parse_config(lines: Iterable[str]) -> dict[str, Any]:
         remain = remain[len(DHCP_HOST_PREFIX):]
         comment = None
         if '#' in remain:
-            # "#" 以降は行末コメント (UI 上のメモとして往復させる)
+            # Everything after "#" is a trailing comment (round-tripped as a UI note)
             pos = remain.find('#')
             comment = remain[pos + 1:].strip()
             remain = remain[:pos]
@@ -191,17 +191,17 @@ def parse_config(lines: Iterable[str]) -> dict[str, Any]:
 
 
 def host_to_line(host: dict[str, Any]) -> str:
-    """ホスト辞書を ``dhcp-host=`` 行の文字列に変換する。
+    """Convert a host dict into a ``dhcp-host=`` line string.
 
     Args:
-        host: :func:`parse_config` が返す形式のホスト辞書。
-            ``delete`` が真なら ``##`` 、``valid`` が偽なら ``#`` を行頭に付す。
+        host: A host dict in the form returned by :func:`parse_config`.
+            Prefixed with ``##`` if ``delete`` is true, or ``#`` if ``valid`` is false.
 
     Returns:
-        改行を含まない 1 行分の文字列。
+        A single-line string without a newline.
     """
     fields: list[str] = []
-    # "id:..." は dnsmasq の仕様上 MAC より前に置く必要がある
+    # dnsmasq requires "id:..." to come before the MAC
     extra_list = list(host.get('extra') or [])
     if extra_list:
         rest: list[str] = []
@@ -226,7 +226,7 @@ def host_to_line(host: dict[str, Any]) -> str:
         fields.append('ignore')
     head = ''
     if host.get('delete', False):
-        # 削除は "##" で二重にコメントアウトし、再読み込み時に拾われないようにする
+        # Deletion double-comments with "##" so it is not picked up on reload
         head += '##'
     elif not host.get('valid', True) or not fields:
         head += '#'
@@ -237,84 +237,84 @@ def host_to_line(host: dict[str, Any]) -> str:
 
 
 def read_lines(path: str | None) -> list[str] | None:
-    """ファイルを行のリストとして読み込む。
+    """Read a file as a list of lines.
 
     Args:
-        path: 読み込むファイルパス。``None`` や存在しないパスなら ``None`` を返す。
+        path: Path of the file to read. Returns ``None`` if ``None`` or nonexistent.
 
     Returns:
-        行のリスト。読み込めない場合は ``None``。
+        A list of lines, or ``None`` if it cannot be read.
     """
     if not path or not os.path.isfile(path):
         return None
-    # surrogateescape により、UTF-8 として不正なバイトも損失なく保持する。
-    # errors='replace' で読むと、保存時に全行が再書き込みされる際に
-    # 変更していない行のバイトまで U+FFFD に置き換わってしまう。
+    # surrogateescape preserves bytes that are invalid UTF-8 without loss.
+    # Reading with errors='replace' would turn bytes in unchanged lines into
+    # U+FFFD as well, since all lines are rewritten on save.
     with open(path, encoding='utf-8', errors='surrogateescape') as fobj:
         return fobj.readlines()
 
 
 def stage_temp(path: str, lines: list[str]) -> str:
-    """行のリストを、``path`` と同じディレクトリの一時ファイルへ書き出す。
+    """Write a list of lines to a temp file in the same directory as ``path``.
 
-    保存前の検証 (``dnsmasq --test`` など) を挟めるよう、書き込みと
-    置き換えを分けている。一時ファイルは呼び出し側が :func:`promote_staged`
-    か ``os.unlink`` で始末すること。
+    Writing and replacing are separate steps so that validation before saving
+    (``dnsmasq --test`` etc.) can run in between. The caller must dispose of
+    the temp file with :func:`promote_staged` or ``os.unlink``.
 
     Args:
-        path: 最終的な書き出し先のパス (同一ディレクトリに一時ファイルを作る)。
-        lines: 書き出す行 (各行は改行を含む)。
+        path: Final destination path (the temp file is created in its directory).
+        lines: Lines to write (each line includes its newline).
 
     Returns:
-        作成した一時ファイルのパス。
+        Path of the created temp file.
     """
     directory = os.path.dirname(os.path.abspath(path)) or '.'
     try:
         fd, tmp_path = tempfile.mkstemp(dir=directory, prefix='.dnsmasq-webconf-')
     except PermissionError:
-        # 対象ファイルは書けてもディレクトリには書けない構成がある
-        # (Docker で単一ファイルを bind mount し --user で動かす場合など)。
-        # その場合はシステムの一時ディレクトリに作り、昇格時は
-        # promote_staged が上書き書き込みへフォールバックする。
+        # Some setups allow writing the target file but not its directory
+        # (e.g. a single file bind-mounted in Docker and run with --user).
+        # In that case create it in the system temp directory; on promotion,
+        # promote_staged falls back to overwriting in place.
         fd, tmp_path = tempfile.mkstemp(prefix='.dnsmasq-webconf-')
     with os.fdopen(fd, 'w', encoding='utf-8', errors='surrogateescape') as fobj:
         fobj.writelines(lines)
         fobj.flush()
         os.fsync(fobj.fileno())
-    # mkstemp は 0600 で作るため、既存ファイルの権限・所有権を引き継ぐ。
-    # 引き継がないと、dnsmasq が別ユーザーで動く構成で初回保存後に
-    # 設定ファイルが読めなくなってしまう。
+    # mkstemp creates files with 0600, so carry over the existing file's mode/owner.
+    # Otherwise, in setups where dnsmasq runs as a different user, the config
+    # file would become unreadable after the first save.
     if os.path.isfile(path):
         st = os.stat(path)
         os.chmod(tmp_path, stat_module.S_IMODE(st.st_mode))
         try:
             os.chown(tmp_path, st.st_uid, st.st_gid)
         except (PermissionError, OSError):
-            # root でない場合は chown できないので、現ユーザー所有のままにする
+            # chown fails when not root, so leave it owned by the current user
             pass
     return tmp_path
 
 
 def promote_staged(path: str, tmp_path: str, backup: bool = True) -> None:
-    """検証済みの一時ファイルを正式な保存先へ置き換える。
+    """Replace the actual destination with the validated temp file.
 
-    通常は ``os.replace`` で原子的に差し替える。bind mount されたファイルや
-    親ディレクトリに書き込めない場合など rename できないときは、
-    既存ファイルへの上書き書き込みにフォールバックする (inode は変わらない)。
-    この経路は原子的ではないが、それ以外に保存する手段が無い。
+    Normally swaps it in atomically with ``os.replace``. When rename is not
+    possible (e.g. a bind-mounted file or an unwritable parent directory),
+    falls back to overwriting the existing file in place (the inode is kept).
+    This path is not atomic, but there is no other way to save.
 
     Args:
-        path: 書き出し先のパス。
-        tmp_path: :func:`stage_temp` が返した一時ファイルのパス。
-        backup: 真なら既存ファイルを ``<path>.bak`` として退避する。
+        path: Destination path.
+        tmp_path: Path of the temp file returned by :func:`stage_temp`.
+        backup: If true, back up the existing file as ``<path>.bak``.
     """
     if backup and os.path.isfile(path):
-        # 直前の内容を 1 世代だけ退避する (copy2 でメタデータごと保持する)
+        # Keep one generation of the previous content (copy2 keeps metadata)
         try:
             shutil.copy2(path, path + '.bak')
         except PermissionError as exc:
-            # ディレクトリに書き込めない構成ではバックアップを作れない。
-            # 保存自体は可能なので、警告に留めて続行する。
+            # A backup cannot be created when the directory is not writable.
+            # Saving itself is still possible, so just warn and continue.
             logger.warning('Could not create backup %s.bak: %s', path, exc)
     try:
         os.replace(tmp_path, path)
@@ -330,11 +330,11 @@ def promote_staged(path: str, tmp_path: str, backup: bool = True) -> None:
 
 
 def _overwrite_in_place(src_path: str, dst_path: str) -> None:
-    """``src_path`` の内容で ``dst_path`` を上書きする (inode・権限は維持される)。
+    """Overwrite ``dst_path`` with the content of ``src_path`` (keeps inode/mode).
 
     Args:
-        src_path: 書き込む内容を持つファイル。
-        dst_path: 上書き対象のファイル。
+        src_path: File holding the content to write.
+        dst_path: File to overwrite.
     """
     with open(src_path, 'rb') as src, open(dst_path, 'wb') as dst:
         shutil.copyfileobj(src, dst)
@@ -343,21 +343,21 @@ def _overwrite_in_place(src_path: str, dst_path: str) -> None:
 
 
 def write_lines_atomic(path: str, lines: list[str], backup: bool = True) -> None:
-    """行のリストをファイルへ原子的に書き出す。
+    """Atomically write a list of lines to a file.
 
-    同一ディレクトリ上の一時ファイルへ書いてから ``os.replace`` で差し替えるため、
-    書き込み途中で中断しても設定ファイルが破損しない。
+    Writes to a temp file in the same directory and swaps it in with
+    ``os.replace``, so an interrupted write does not corrupt the config file.
 
     Args:
-        path: 書き出し先のパス。
-        lines: 書き出す行 (各行は改行を含む)。
-        backup: 真なら既存ファイルを ``<path>.bak`` として退避する。
+        path: Destination path.
+        lines: Lines to write (each line includes its newline).
+        backup: If true, back up the existing file as ``<path>.bak``.
     """
     tmp_path = stage_temp(path, lines)
     try:
         promote_staged(path, tmp_path, backup=backup)
     except BaseException:
-        # 昇格に失敗した場合は一時ファイルを残さない
+        # Do not leave the temp file behind if promotion fails
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
         raise
@@ -367,19 +367,20 @@ def apply_changes(
     lines: list[str],
     hosts: Iterable[dict[str, Any]],
 ) -> tuple[list[str], list[dict[str, Any]]]:
-    """変更されたホストを設定ファイルの行へ反映する。
+    """Apply changed hosts to the config file lines.
 
-    ``dhcp-host=`` 以外の行や、変更対象でない行は一切書き換えない (非破壊編集)。
-    既存行の置換時は、UI が読み込んだ時点の原文と現在の行が一致するかを検証し、
-    一致しない場合は上書きせず衝突として報告する (楽観的ロック)。
+    Never rewrites non-``dhcp-host=`` lines or unchanged lines (non-destructive).
+    When replacing an existing line, checks that it still matches the original
+    the UI loaded; if not, it is reported as a conflict, not overwritten
+    (optimistic locking).
 
     Args:
-        lines: 現在の設定ファイルの全行。
-        hosts: UI から送られてきたホスト辞書の並び。
+        lines: All lines of the current config file.
+        hosts: Sequence of host dicts sent from the UI.
 
     Returns:
-        ``(更新後の行, 結果レポート)`` のタプル。レポートは
-        ``{'status': 'appended'|'updated'|'conflict'|'out_of_range', ...}`` の並び。
+        A tuple ``(updated lines, report)``. The report is a sequence of
+        ``{'status': 'appended'|'updated'|'conflict'|'out_of_range', ...}``.
     """
     lines = list(lines)
     report: list[dict[str, Any]] = []
@@ -412,7 +413,7 @@ def apply_changes(
                 'message': 'line number is out of range',
             })
             continue
-        # 読み込み時の原文と突き合わせ、ファイルが外部で変更されていないか確認する
+        # Compare with the original at load time to detect external modification
         if lines[line_num - 1] != host.get('line', ''):
             report.append({
                 'status': 'conflict',

@@ -1,8 +1,8 @@
 name: Publish to PyPI
 
-# タグを打つと PyPI へ公開する。
-# API トークンを持たずに済むよう Trusted Publishing (OIDC) を使用する。
-# 事前に PyPI 側でこのリポジトリと workflow を Trusted Publisher として登録すること。
+# Pushing a tag publishes to PyPI.
+# Uses Trusted Publishing (OIDC) so that no API token is needed.
+# Register this repository and workflow as a Trusted Publisher on PyPI beforehand.
 on:
   push:
     tags: ['v*']
@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
-      # Trusted Publishing に必要
+      # Required for Trusted Publishing
       id-token: write
     steps:
       - uses: actions/checkout@v7

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""認証・CSRF 判定のテスト。"""
+"""Tests for authentication and CSRF checks."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from dnsmasq_webconf.auth import Credentials, is_same_origin
 
 
 class TestCredentials:
-    """``Credentials`` の解析と検証を確認する。"""
+    """Check parsing and verification of ``Credentials``."""
 
     def test_parse_user_and_password(self) -> None:
         creds = Credentials.parse('admin:secret')
@@ -37,14 +37,14 @@ class TestCredentials:
         assert Credentials('admin', 'secret').verify(user, password) is False
 
     def test_verify_handles_non_ascii(self) -> None:
-        """非 ASCII のパスワードでも compare_digest が例外を投げない。"""
+        """compare_digest does not raise even for non-ASCII passwords."""
         creds = Credentials('管理者', 'ひみつ')
         assert creds.verify('管理者', 'ひみつ') is True
         assert creds.verify('管理者', 'ちがう') is False
 
 
 class TestSameOrigin:
-    """``is_same_origin`` による CSRF 判定を確認する。"""
+    """Check CSRF decisions made by ``is_same_origin``."""
 
     def test_matching_origin_is_allowed(self) -> None:
         assert is_same_origin('http://192.168.1.1:8080', '192.168.1.1:8080') is True
@@ -53,7 +53,7 @@ class TestSameOrigin:
         assert is_same_origin('http://evil.example', '192.168.1.1:8080') is False
 
     def test_missing_origin_is_allowed_for_cli(self) -> None:
-        """curl などブラウザ以外からの利用を妨げない。"""
+        """Do not block non-browser clients such as curl."""
         assert is_same_origin(None, '192.168.1.1:8080') is True
         assert is_same_origin('', '192.168.1.1:8080') is True
 
@@ -61,5 +61,5 @@ class TestSameOrigin:
         assert is_same_origin('http://evil.example', None) is False
 
     def test_scheme_difference_alone_does_not_matter(self) -> None:
-        """netloc 比較のため、http/https の違いだけでは拒否しない。"""
+        """Since netloc is compared, an http/https difference alone is not rejected."""
         assert is_same_origin('https://host:8080', 'host:8080') is True

@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""後方互換のための起動スクリプト。
+"""Launcher script kept for backward compatibility.
 
-v0.1 系では ``python app/index.py`` が唯一の起動方法だったため、
-既存の systemd ユニットや手順書を壊さないよう互換シムとして残している。
+In v0.1, ``python app/index.py`` was the only way to start the server, so this
+is kept as a compatibility shim to avoid breaking existing systemd units and docs.
 
-新規に導入する場合は以下を推奨する::
+For new installations, the following is recommended::
 
     pip install dnsmasq-webconf
     dnsmasq-webconf --help
 
-注意: v0.2 以降、既定の待ち受けアドレスは 0.0.0.0 から 127.0.0.1 に変更された。
-LAN へ公開する場合は ``--host 0.0.0.0 --auth USER:PASSWORD`` を指定すること。
+Note: since v0.2, the default listen address changed from 0.0.0.0 to 127.0.0.1.
+To expose it on the LAN, specify ``--host 0.0.0.0 --auth USER:PASSWORD``.
 """
 
 import os
 import sys
 
-# リポジトリを clone しただけで実行された場合でもパッケージを解決できるようにする
+# Make the package importable even when run straight from a cloned repository
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dnsmasq_webconf.app import main  # noqa: E402

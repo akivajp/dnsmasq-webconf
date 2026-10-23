@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""保存前検証 (test-command)・リース自動更新・認証の対話入力に関するテスト。"""
+"""Tests for pre-save validation (test-command), lease auto-refresh and auth prompts."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ NEW_HOST = {
 
 @pytest.fixture
 def files(tmp_path):
-    """テスト用の設定・リース・hosts ファイルを用意する。"""
+    """Prepare config, leases and hosts files for tests."""
     config = tmp_path / 'dnsmasq.more.conf'
     leases = tmp_path / 'dnsmasq.leases'
     hosts = tmp_path / 'hosts'
@@ -45,14 +45,14 @@ def files(tmp_path):
 
 
 def make_app(files, **kwargs) -> TestApp:
-    """テスト用の WSGI アプリを生成する。
+    """Build a WSGI app for tests.
 
     Args:
-        files: :func:`files` フィクスチャの戻り値。
-        **kwargs: :class:`Settings` への追加引数。
+        files: Return value of the :func:`files` fixture.
+        **kwargs: Extra arguments for :class:`Settings`.
 
     Returns:
-        webtest の :class:`TestApp`。
+        A webtest :class:`TestApp`.
     """
     settings = Settings(
         hosts_file=str(files['hosts']),
@@ -64,16 +64,16 @@ def make_app(files, **kwargs) -> TestApp:
 
 
 def save_payload() -> dict:
-    """新規ホスト 1 件の保存リクエストを組み立てる。
+    """Build a save request for a single new host.
 
     Returns:
-        ``/api/save`` へのリクエスト本文。
+        Request body for ``/api/save``.
     """
     return {'hosts': [dict(NEW_HOST)], 'ignored_hosts': []}
 
 
 class TestPreSaveValidation:
-    """``--test-command`` による保存前検証を確認する。"""
+    """Check pre-save validation via ``--test-command``."""
 
     def test_passing_validation_writes_file(self, files) -> None:
         app = make_app(files, test_command=f'cat {TEST_PATH_PLACEHOLDER} > /dev/null')
@@ -83,8 +83,8 @@ class TestPreSaveValidation:
         assert 'newbox' in files['config'].read_text(encoding='utf-8')
 
     def test_failing_validation_rejects_and_keeps_file_intact(self, files) -> None:
-        """検証に失敗した場合、ファイルは一切変更されず REJECTED を返す。"""
-        # grep は対象語が見つからないと非 0 で終了する擬似的な検証コマンド
+        """If validation fails, the file is left untouched and REJECTED is returned."""
+        # Mock validation command: grep exits non-zero when the target word is not found
         app = make_app(
             files,
             test_command=f'grep -q "forbidden-marker" {TEST_PATH_PLACEHOLDER}',
@@ -92,14 +92,14 @@ class TestPreSaveValidation:
         res = app.post_json('/api/save', save_payload())
         assert res.json['status'] == 'REJECTED'
         assert res.json['applied'] == 0
-        # 失敗時は既存ファイルが無傷で、一時ファイルも残らない
+        # On failure the existing file is intact and no temp files are left behind
         assert files['config'].read_text(encoding='utf-8') == CONFIG_BODY
         assert not any(
             p.name.startswith('.dnsmasq-webconf-') for p in files['config'].parent.iterdir()
         )
 
     def test_failed_validation_does_not_run_reload(self, files) -> None:
-        """検証失敗時はリロードまで実行しない。"""
+        """When validation fails, the reload is not run either."""
         calls = []
         marker = files['config'].parent / 'reload-marker'
         app = make_app(
@@ -113,7 +113,7 @@ class TestPreSaveValidation:
         assert not marker.exists()
 
     def test_validation_runs_against_staged_content(self, files) -> None:
-        """検証は書き込み後の一時ファイルに対して行われる。"""
+        """Validation runs against the temp file after it is written."""
         app = make_app(files, test_command=f'grep -q "newbox" {TEST_PATH_PLACEHOLDER}')
         res = app.post_json('/api/save', save_payload())
         assert res.json['status'] == 'OK'
@@ -130,7 +130,7 @@ class TestPreSaveValidation:
 
 
 class TestLeasesApi:
-    """``/api/leases`` を確認する。"""
+    """Check ``/api/leases``."""
 
     def test_returns_parsed_leases(self, files) -> None:
         res = make_app(files).get('/api/leases')
@@ -139,7 +139,7 @@ class TestLeasesApi:
         assert leases[0]['mac'] == 'aa:bb:cc:dd:ee:05'
 
     def test_reflects_file_changes(self, files) -> None:
-        """UI の定期更新が新しいリースを拾えるよう、毎回読み直す。"""
+        """Re-read every time so the UI's periodic refresh picks up new leases."""
         app = make_app(files)
         assert len(app.get('/api/leases').json) == 1
         files['leases'].write_text(
@@ -158,7 +158,7 @@ class TestLeasesApi:
         assert res.json == []
 
     def test_lease_hostnames_are_escaped(self, files) -> None:
-        """リース名は信頼できない入力なので script 脱出を許さない。"""
+        """Lease names are untrusted input, so they must not escape the script block."""
         files['leases'].write_text(
             '1700000000 aa:bb:cc:dd:ee:09 1.2.3.4 </script><script> 01:xx\n',
             encoding='utf-8',
@@ -168,7 +168,7 @@ class TestLeasesApi:
 
 
 class TestRunCommand:
-    """コマンド実行ヘルパーを確認する。"""
+    """Check the command execution helper."""
 
     def test_path_placeholder_is_substituted(self, tmp_path) -> None:
         target = tmp_path / 'probe.conf'
@@ -183,7 +183,7 @@ class TestRunCommand:
 
 
 class TestResolveAuth:
-    """``--auth`` の解析 (対話入力含む) を確認する。"""
+    """Check parsing of ``--auth`` (including interactive input)."""
 
     def test_user_password_form(self) -> None:
         creds = resolve_auth('admin:secret')
@@ -192,7 +192,7 @@ class TestResolveAuth:
         assert creds.password == 'secret'
 
     def test_username_only_prompts_for_password(self, monkeypatch) -> None:
-        """ユーザー名のみの場合はターミナルからパスワードを入力させる。"""
+        """With only a username, prompt for the password on the terminal."""
         monkeypatch.setattr('getpass.getpass', lambda *_: 'typed-secret')
         creds = resolve_auth('admin')
         assert creds is not None
@@ -211,7 +211,7 @@ class TestResolveAuth:
 
 
 class TestTemplateContext:
-    """テンプレートへ渡すコンテキストを確認する。"""
+    """Check the context passed to the template."""
 
     def test_refresh_interval_is_embedded(self, files) -> None:
         res = make_app(files, refresh_interval=15).get('/')

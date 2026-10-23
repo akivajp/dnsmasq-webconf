@@ -1,7 +1,7 @@
 name: Publish Docker image
 
-# タグを打つと GHCR (ghcr.io) へ Docker イメージを公開する。
-# タグ名 (v0.3.1 など) と latest の両方を付ける。
+# Pushing a tag publishes the Docker image to GHCR (ghcr.io).
+# Both the tag name (e.g. v0.3.1) and latest are applied.
 on:
   push:
     tags: ['v*']

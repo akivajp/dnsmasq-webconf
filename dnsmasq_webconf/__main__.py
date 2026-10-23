@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""``python -m dnsmasq_webconf`` で起動するためのエントリポイント。"""
+"""Entry point for launching via ``python -m dnsmasq_webconf``."""
 
 import sys
 

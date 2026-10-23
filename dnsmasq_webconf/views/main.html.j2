@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 
-    {# 閉域 LAN でも動作するよう、CSS/JS はすべてパッケージ同梱のものを配信する #}
+    {# Serve only CSS/JS bundled with the package, so it works on an isolated LAN #}
     <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 
     <title>Dnsmasq Configurator</title>
@@ -13,14 +13,14 @@
     <script src="/static/vendor/jquery.min.js"></script>
     <script src="/static/vendor/bootstrap.bundle.min.js"></script>
     <script>
-      // これらの値は to_embedded_json() で "<" 等をエスケープ済みのため、
-      // 設定ファイルやリース名にスクリプト終端文字列が含まれていても脱出できない。
-      // 注意: JS コメント内にも終端文字列を書かないこと (ブロックが閉じてしまう)。
+      // These values have "<" etc. escaped by to_embedded_json(), so a script
+      // end tag in the config file or a lease name cannot break out of this block.
+      // Note: do not write the end tag even in a JS comment (it closes the block).
       var system_hosts = {{ hosts_json | safe }};
       var leases = {{ leases_json | safe }};
       var config = {{ config_json | safe }};
       var read_only = {{ 'true' if read_only else 'false' }};
-      // リース一覧の自動更新間隔 (秒)。0 のときは更新しない
+      // Auto-refresh interval for the lease list (seconds). 0 disables refreshing
       var refresh_interval = {{ refresh_interval | default(0) }};
     </script>
     <script src="/static/main.js?{{ timestamp }}"></script>
@@ -34,7 +34,7 @@
       </nav>
     </div>
 
-    {# 保存結果 (成功・衝突) をユーザーに見せるための領域 #}
+    {# Area that shows the user the save result (success / conflicts) #}
     <div class="container-fluid my-2">
       <div id="save-status"></div>
     </div>

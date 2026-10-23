@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""dnsmasq の静的 DHCP 予約を編集する軽量 Web UI。
+"""Lightweight web UI for editing dnsmasq static DHCP reservations.
 
-既存の dnsmasq 設定ファイルを再生成せず、``dhcp-host=`` 行のうち
-変更された行だけを差し替える「非破壊編集」を行う。
+Performs "non-destructive editing": instead of regenerating the existing
+dnsmasq config file, it replaces only the ``dhcp-host=`` lines that changed.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from .config import (
 
 logger = logging.getLogger(__name__)
 
-# パッケージ同梱のテンプレート/静的ファイルの所在
+# Location of the templates/static files bundled with the package
 PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 VIEW_DIR = os.path.join(PACKAGE_DIR, 'views')
 STATIC_DIR = os.path.join(PACKAGE_DIR, 'static')
@@ -45,15 +45,15 @@ DEFAULT_CONFIG = '/etc/dnsmasq.more.conf'
 DEFAULT_HOST = '127.0.0.1'
 DEFAULT_PORT = 8080
 
-# reload / test コマンドが暴走しても UI を巻き込まないための上限 (秒)
+# Upper limit (seconds) so a runaway reload/test command does not hang the UI
 COMMAND_TIMEOUT = 30
 
-# 保存前検証コマンド内のパス置き換えに使うプレースホルダ
+# Placeholder replaced with the file path in the pre-save validation command
 TEST_PATH_PLACEHOLDER = '{path}'
 
 
 class Settings:
-    """サーバーの動作設定をまとめて保持する。"""
+    """Holds the server's runtime settings."""
 
     def __init__(
         self,
@@ -67,19 +67,20 @@ class Settings:
         backup: bool = True,
         refresh_interval: int = 30,
     ) -> None:
-        """設定を初期化する。
+        """Initialize the settings.
 
         Args:
-            hosts_file: hosts ファイルのパス (閲覧のみ)。
-            leases_file: dnsmasq リースファイルのパス (閲覧のみ)。
-            config_file: 編集対象の dnsmasq 設定ファイルのパス。
-            reload_command: 保存後に実行するシェルコマンド。
-            test_command: 保存前に実行する検証コマンド。``{path}`` を
-                対象ファイルのパスへ置き換えて実行する。
-            credentials: BASIC 認証の資格情報。``None`` なら認証なし。
-            read_only: 真なら保存 API を無効化する。
-            backup: 保存時に ``.bak`` を残すかどうか。
-            refresh_interval: リース一覧の自動更新間隔 (秒)。0 で無効。
+            hosts_file: Path to the hosts file (view only).
+            leases_file: Path to the dnsmasq leases file (view only).
+            config_file: Path to the dnsmasq config file to edit.
+            reload_command: Shell command to run after saving.
+            test_command: Validation command to run before saving. ``{path}``
+                is replaced with the path of the target file.
+            credentials: BASIC auth credentials. ``None`` means no auth.
+            read_only: If true, the save API is disabled.
+            backup: Whether to keep a ``.bak`` file when saving.
+            refresh_interval: Auto-refresh interval of the lease list
+                (seconds). 0 disables it.
         """
         self.hosts_file = hosts_file
         self.leases_file = leases_file
@@ -93,27 +94,27 @@ class Settings:
 
 
 def to_embedded_json(obj: Any) -> str:
-    """HTML の ``<script>`` 内へ安全に埋め込める JSON 文字列を生成する。
+    """Build a JSON string that can be safely embedded in an HTML ``<script>``.
 
-    ``<`` などをエスケープすることで、設定ファイルやリースファイルに
-    ``</script>`` が含まれていても script ブロックから脱出できないようにする
-    (DHCP クライアントが申告するホスト名は信頼できない入力である)。
+    Escaping ``<`` and similar characters ensures that a ``</script>`` in the
+    config or leases file cannot break out of the script block
+    (hostnames reported by DHCP clients are untrusted input).
 
     Args:
-        obj: JSON 化する対象。
+        obj: Object to serialize as JSON.
 
     Returns:
-        エスケープ済みの JSON 文字列。
+        The escaped JSON string.
     """
-    # ensure_ascii=True で非 ASCII 文字を \uXXXX にエスケープする。
-    # surrogateescape で読み込んだ不正バイト (単独サロゲート) を含む文字列が
-    # レスポンスの UTF-8 エンコード時に 500 になるのを防ぐため。
+    # ensure_ascii=True escapes non-ASCII characters as \uXXXX.
+    # This prevents a 500 when a string containing invalid bytes read via
+    # surrogateescape (lone surrogates) is UTF-8 encoded in the response.
     text = json.dumps(obj, ensure_ascii=True)
     return (
         text.replace('<', '\\u003c')
             .replace('>', '\\u003e')
             .replace('&', '\\u0026')
-            # JS では生の U+2028/U+2029 が行終端として解釈されるため潰す
+            # Escape raw U+2028/U+2029, which JS treats as line terminators
             .replace(' ', '\\u2028')
             .replace(' ', '\\u2029')
     )
@@ -122,23 +123,23 @@ def to_embedded_json(obj: Any) -> str:
 def run_command(
     command: str, path: str | None = None
 ) -> dict[str, Any]:
-    """保存後のリロード / 保存前の検証コマンドを実行する。
+    """Run the post-save reload command or the pre-save validation command.
 
     Args:
-        command: 実行するシェルコマンド (サーバー管理者が起動時に指定したもの)。
-        path: ``{path}`` プレースホルダを置き換えるファイルパス。検証コマンドで
-            は一時ファイルのパスを渡し、リロードコマンドでは ``None`` を渡す。
+        command: Shell command to run (specified by the server admin at startup).
+        path: File path that replaces the ``{path}`` placeholder. Pass the temp
+            file path for the validation command and ``None`` for the reload.
 
     Returns:
-        ``{'command', 'returncode', 'output'}`` を含む実行結果。
+        Result containing ``{'command', 'returncode', 'output'}``.
     """
     if path is not None:
-        # 管理者がコマンドを組むときにパスをクォートできるよう、単純置換のみ行う
+        # Plain substitution only, so the admin can quote the path in the command
         command = command.replace(TEST_PATH_PLACEHOLDER, path)
     try:
         completed = subprocess.run(
             command,
-            shell=True,  # 管理者が起動時に指定した文字列のみを実行する
+            shell=True,  # Only runs the string the admin specified at startup
             capture_output=True,
             text=True,
             timeout=COMMAND_TIMEOUT,
@@ -159,16 +160,16 @@ def run_command(
 
 
 def create_app(settings: Settings) -> bottle.Bottle:
-    """設定から bottle アプリケーションを生成する。
+    """Create a bottle application from the settings.
 
-    グローバル変数を使わずに設定を閉じ込めるため、ファクトリ形式としている
-    (テストから複数の設定でインスタンス化できる)。
+    Uses a factory so the settings are enclosed without global variables
+    (tests can instantiate it with multiple settings).
 
     Args:
-        settings: サーバーの動作設定。
+        settings: The server's runtime settings.
 
     Returns:
-        ルート登録済みの bottle アプリケーション。
+        A bottle application with its routes registered.
     """
     app = bottle.Bottle()
     require_auth = make_auth_plugin(settings.credentials)
@@ -176,7 +177,7 @@ def create_app(settings: Settings) -> bottle.Bottle:
     @app.route('/')
     @require_auth
     def index() -> str:
-        """メイン画面を描画する。"""
+        """Render the main page."""
         hosts_lines = read_lines(settings.hosts_file)
         leases_lines = read_lines(settings.leases_file)
         config_lines = read_lines(settings.config_file)
@@ -192,8 +193,8 @@ def create_app(settings: Settings) -> bottle.Bottle:
             hosts_file=settings.hosts_file,
             leases_file=settings.leases_file,
             config_file=settings.config_file,
-            # 文字列 "null" が真と評価されてしまう問題を避けるため、
-            # テンプレートの分岐には真偽値を明示的に渡す
+            # Pass explicit booleans for template branches, since the
+            # string "null" would otherwise evaluate as true
             has_hosts=hosts is not None,
             has_leases=leases is not None,
             has_config=config is not None,
@@ -205,8 +206,8 @@ def create_app(settings: Settings) -> bottle.Bottle:
         return bottle.jinja2_template(
             'main.html.j2',
             template_lookup=[VIEW_DIR],
-            # 多層防御として Jinja2 の自動エスケープを有効にする。
-            # JSON 変数は to_embedded_json() でエスケープ済みのため | safe を付す。
+            # Enable Jinja2 autoescaping as defense in depth.
+            # JSON variables get | safe, as to_embedded_json() already escaped them.
             template_settings={'autoescape': True},
             **context,
         )
@@ -214,28 +215,28 @@ def create_app(settings: Settings) -> bottle.Bottle:
     @app.route('/static/<path:path>')
     @require_auth
     def static(path: str) -> Any:
-        """同梱の静的ファイルを配信する。"""
-        # path 直下だけでなく vendor/ 以下も配信するため path フィルタを使う。
-        # static_file() が root 外へのアクセスを防ぐ。
+        """Serve the bundled static files."""
+        # Use the path filter to also serve files under vendor/, not just the top level.
+        # static_file() prevents access outside root.
         return bottle.static_file(path, root=STATIC_DIR)
 
     @app.route('/api/leases')
     @require_auth
     def leases_api() -> str:
-        """リース一覧を JSON で返す (UI による定期更新用)。"""
+        """Return the lease list as JSON (for periodic refresh by the UI)."""
         bottle.response.headers['Content-Type'] = 'application/json'
         bottle.response.headers['Cache-Control'] = 'no-store'
         bottle.response.headers['X-Content-Type-Options'] = 'nosniff'
         lines = read_lines(settings.leases_file)
         leases = parse_leases(lines) if lines is not None else []
-        # リース名は信頼できない入力のため、JSON API でも "<" 等をエスケープする
+        # Lease names are untrusted input, so escape "<" etc. in the JSON API too
         return to_embedded_json(leases)
 
     @app.route('/api/save', method='POST')
     @require_auth
     def save() -> str:
-        """変更されたホストを設定ファイルへ反映する。"""
-        # BASIC 認証はブラウザが自動送信するため、CSRF 対策を別途行う
+        """Apply the changed hosts to the config file."""
+        # Browsers send BASIC auth automatically, so CSRF needs separate protection
         require_same_origin()
         bottle.response.headers['Content-Type'] = 'application/json'
         bottle.response.headers['Cache-Control'] = 'no-store'
@@ -253,7 +254,7 @@ def create_app(settings: Settings) -> bottle.Bottle:
         targets = list(data.get('hosts') or []) + list(data.get('ignored_hosts') or [])
         lines, report = apply_changes(lines, targets)
 
-        # 1 件も変更が無い場合はファイルに触れない
+        # Don't touch the file if nothing changed
         if report:
             conflicts = [
                 r for r in report if r['status'] not in ('appended', 'updated')
@@ -261,15 +262,15 @@ def create_app(settings: Settings) -> bottle.Bottle:
             applied = len(report) - len(conflicts)
             result: dict[str, Any] = {'applied': applied, 'report': report}
 
-            # 検証コマンドが指定されている場合、まず一時ファイルへ書き出し、
-            # そのパスで検証する。合格するまで正式なファイルには触れないため、
-            # 失敗時のロールバックが不要になる。
+            # If a validation command is set, first write to a temp file and
+            # validate that path. The real file is not touched until it passes,
+            # so no rollback is needed on failure.
             tmp_path: str | None = stage_temp(settings.config_file, lines) if report else None
             try:
                 if settings.test_command and tmp_path:
                     validation = run_command(settings.test_command, path=tmp_path)
                     if validation['returncode'] != 0:
-                        # 検証に失敗した場合は書き込みを取りやめる (既存ファイルは無傷)
+                        # Abort the write if validation fails (existing file is untouched)
                         return json.dumps({
                             'status': 'REJECTED',
                             'applied': 0,
@@ -282,12 +283,12 @@ def create_app(settings: Settings) -> bottle.Bottle:
                     )
                     tmp_path = None
             finally:
-                # 未昇格の一時ファイルを必ず始末する
+                # Always clean up a temp file that was not promoted
                 if tmp_path and os.path.exists(tmp_path):
                     os.unlink(tmp_path)
 
             result['status'] = 'OK' if applied else 'PARTIAL'
-            # 変更が実際に書き込まれた場合のみ dnsmasq を再読み込みする
+            # Reload dnsmasq only if changes were actually written
             if settings.reload_command and applied > 0:
                 result['reload'] = run_command(settings.reload_command)
             return json.dumps(result, ensure_ascii=False)
@@ -300,18 +301,18 @@ def create_app(settings: Settings) -> bottle.Bottle:
 
 
 def resolve_auth(spec: str | None) -> Credentials | None:
-    """CLI の ``--auth`` 値を資格情報へ変換する。
+    """Convert the CLI ``--auth`` value into credentials.
 
     Args:
-        spec: ``user:password`` 形式の文字列。``:`` が無い場合はユーザー名のみ
-            と見なし、ターミナルからパスワードを対話入力する (シェル履歴や
-            ``ps`` の出力にパスワードが残るのを避けるため)。
+        spec: A ``user:password`` string. Without ``:`` it is treated as a
+            username only, and the password is prompted for on the terminal
+            (to keep the password out of shell history and ``ps`` output).
 
     Returns:
-        解析済みの資格情報。``spec`` が空なら ``None``。
+        The parsed credentials, or ``None`` if ``spec`` is empty.
 
     Raises:
-        ValueError: 形式が不正、または入力が空の場合。
+        ValueError: If the format is invalid or the input is empty.
     """
     if not spec:
         return None
@@ -325,26 +326,26 @@ def resolve_auth(spec: str | None) -> Credentials | None:
 
 
 def is_loopback(host: str) -> bool:
-    """待ち受けアドレスがループバックのみかを判定する。
+    """Determine whether the listen address is loopback only.
 
     Args:
-        host: 待ち受けアドレス文字列。
+        host: Listen address string.
 
     Returns:
-        ループバックアドレスなら ``True``。ホスト名など判定できない場合は ``False``。
+        ``True`` for a loopback address; ``False`` if undeterminable (e.g. a hostname).
     """
     try:
         return ipaddress.ip_address(host).is_loopback
     except ValueError:
-        # "localhost" は名前解決せずにループバックと見なす
+        # Treat "localhost" as loopback without resolving it
         return host == 'localhost'
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """コマンドライン引数のパーサを構築する。
+    """Build the command-line argument parser.
 
     Returns:
-        設定済みの :class:`argparse.ArgumentParser`。
+        A configured :class:`argparse.ArgumentParser`.
     """
     parser = argparse.ArgumentParser(
         prog='dnsmasq-webconf',
@@ -424,13 +425,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI のエントリポイント。
+    """CLI entry point.
 
     Args:
-        argv: コマンドライン引数。``None`` なら ``sys.argv[1:]`` を使う。
+        argv: Command-line arguments. ``None`` means ``sys.argv[1:]``.
 
     Returns:
-        終了コード (0 が正常)。
+        Exit code (0 on success).
     """
     args = build_parser().parse_args(argv)
 
@@ -439,8 +440,8 @@ def main(argv: list[str] | None = None) -> int:
         level=logging.DEBUG if args.debug else logging.INFO,
     )
 
-    # 認証情報はコマンドラインより環境変数を後置きで上書きしない
-    # (ps から見えないよう、環境変数の利用を推奨する)
+    # For credentials, the environment variable does not override the command line
+    # (using the environment variable is recommended, so they are hidden from ps)
     try:
         credentials = resolve_auth(
             args.auth or os.environ.get('DNSMASQ_WEBCONF_AUTH')
@@ -449,7 +450,7 @@ def main(argv: list[str] | None = None) -> int:
         logger.error('--auth の指定が不正です: %s', exc)
         return 2
 
-    # 認証なしで外部に公開すると、誰でも DHCP 予約を書き換えられてしまう
+    # Exposing without auth would let anyone rewrite the DHCP reservations
     if credentials is None and not is_loopback(args.host) and not args.read_only:
         if not args.allow_no_auth:
             logger.error(
@@ -477,7 +478,7 @@ def main(argv: list[str] | None = None) -> int:
         refresh_interval=args.refresh_interval,
     )
 
-    # 起動時に実際に読み込める対象を表示しておく (設定ミスの早期発見のため)
+    # Show which files can actually be read at startup (to catch misconfiguration early)
     for label, path in (
         ('config', args.config), ('leases', args.leases), ('hosts', args.hosts),
     ):
@@ -489,10 +490,10 @@ def main(argv: list[str] | None = None) -> int:
 
     app = create_app(settings)
 
-    # 依存を追加した場合のみマルチスレッドの waitress を使う。
-    # wsgiref (既定) はシングルスレッドなので、reload コマンドの実行中は
-    # 他のリクエストが待たされてしまう。--debug 時は reloader が
-    # waitress と併用できないため既定サーバーのままにする。
+    # Use multithreaded waitress only if that dependency is installed.
+    # wsgiref (the default) is single-threaded, so other requests wait while
+    # the reload command runs. With --debug, keep the default server because
+    # the reloader cannot be used together with waitress.
     server = 'wsgiref'
     if not args.debug:
         try:

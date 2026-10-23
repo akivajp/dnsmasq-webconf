@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Web アプリケーション層 (ルーティング・認証・CSRF・エスケープ) のテスト。"""
+"""Tests for the web application layer (routing, auth, CSRF, escaping)."""
 
 from __future__ import annotations
 
@@ -32,14 +32,14 @@ HOSTS_BODY = '127.0.0.1\tlocalhost\n'
 
 
 def basic_auth_header(user: str, password: str) -> dict[str, str]:
-    """BASIC 認証ヘッダを組み立てる。
+    """Build a Basic auth header.
 
     Args:
-        user: ユーザー名。
-        password: パスワード。
+        user: Username.
+        password: Password.
 
     Returns:
-        ``Authorization`` ヘッダを含む辞書。
+        A dict containing the ``Authorization`` header.
     """
     token = base64.b64encode(f'{user}:{password}'.encode('utf-8')).decode('ascii')
     return {'Authorization': f'Basic {token}'}
@@ -47,7 +47,7 @@ def basic_auth_header(user: str, password: str) -> dict[str, str]:
 
 @pytest.fixture
 def files(tmp_path):
-    """テスト用の設定・リース・hosts ファイルを用意する。"""
+    """Prepare config, leases and hosts files for tests."""
     config = tmp_path / 'dnsmasq.more.conf'
     leases = tmp_path / 'dnsmasq.leases'
     hosts = tmp_path / 'hosts'
@@ -58,14 +58,14 @@ def files(tmp_path):
 
 
 def make_app(files, **kwargs) -> TestApp:
-    """テスト用の WSGI アプリを生成する。
+    """Build a WSGI app for tests.
 
     Args:
-        files: :func:`files` フィクスチャの戻り値。
-        **kwargs: :class:`Settings` への追加引数。
+        files: Return value of the :func:`files` fixture.
+        **kwargs: Extra arguments for :class:`Settings`.
 
     Returns:
-        webtest の :class:`TestApp`。
+        A webtest :class:`TestApp`.
     """
     settings = Settings(
         hosts_file=str(files['hosts']),
@@ -77,7 +77,7 @@ def make_app(files, **kwargs) -> TestApp:
 
 
 class TestIndex:
-    """メイン画面の描画を確認する。"""
+    """Check rendering of the main page."""
 
     def test_renders_successfully(self, files) -> None:
         res = make_app(files).get('/')
@@ -85,7 +85,7 @@ class TestIndex:
         assert 'Dnsmasq Configurator' in res.text
 
     def test_serves_bundled_assets_not_cdn(self, files) -> None:
-        """閉域 LAN で動作させるため、外部 CDN を参照しない。"""
+        """No external CDN is referenced, so it works on an isolated LAN."""
         res = make_app(files).get('/')
         assert '/static/vendor/jquery.min.js' in res.text
         assert 'cdn' not in res.text.lower()
@@ -98,7 +98,7 @@ class TestIndex:
         assert app.get('/static/main.js').status_code == 200
 
     def test_missing_files_do_not_break_page(self, tmp_path) -> None:
-        """対象ファイルが無くても 500 にならず、該当セクションを描画しない。"""
+        """Missing files do not cause a 500; their sections are just not rendered."""
         settings = Settings(
             hosts_file=str(tmp_path / 'nope'),
             leases_file=str(tmp_path / 'nope'),
@@ -106,12 +106,12 @@ class TestIndex:
         )
         res = TestApp(create_app(settings)).get('/')
         assert res.status_code == 200
-        # 文字列 "null" が真と評価されてセクションが出てしまう旧バグの回帰テスト
+        # Regression test for an old bug: string "null" was truthy, showing the section
         assert 'DHCP Leases' not in res.text
         assert "System's hosts file" not in res.text
 
     def test_empty_hosts_option_hides_hosts_table(self, files) -> None:
-        """``--hosts ''`` で hosts 一覧を非表示にできる (Issue #15 で案内した手順)。"""
+        """``--hosts ''`` hides the hosts table (workaround suggested in Issue #15)."""
         args = build_parser().parse_args(['--hosts', ''])
         settings = Settings(
             hosts_file=args.hosts,
@@ -121,7 +121,7 @@ class TestIndex:
         res = TestApp(create_app(settings)).get('/')
         assert res.status_code == 200
         assert "System's hosts file" not in res.text
-        # 他の一覧は通常どおり表示される
+        # Other tables are shown as usual
         assert 'DHCP Leases' in res.text
 
     def test_read_only_hides_save_controls(self, files) -> None:
@@ -130,46 +130,46 @@ class TestIndex:
         assert 'add-host' not in res.text
 
     def test_filter_box_is_rendered(self, files) -> None:
-        """絞り込み検索ボックス (v0.3.2) が Filters セクションにあること。"""
+        """The filter search box (v0.3.2) is in the Filters section."""
         res = make_app(files).get('/')
         assert 'id="filter-text"' in res.text
         assert 'Filter by name, IP, MAC' in res.text
 
 
 class TestEscaping:
-    """信頼できない入力の埋め込み時のエスケープを確認する。"""
+    """Check escaping when embedding untrusted input."""
 
     def test_script_tag_in_lease_name_cannot_escape(self, files) -> None:
-        """DHCP クライアントが申告するホスト名は信頼できない入力である。"""
+        """Hostnames reported by DHCP clients are untrusted input."""
         files['leases'].write_text(
             '1700000000 aa:bb:cc:dd:ee:09 192.168.1.51 '
             '</script><script>alert(1)</script> 01:xx\n',
             encoding='utf-8',
         )
         res = make_app(files).get('/')
-        # script ブロックを閉じる文字列がそのまま出力されていないこと
+        # A string that closes the script block must not be output verbatim
         assert '</script><script>alert(1)' not in res.text
         assert '\\u003c/script\\u003e' in res.text
 
     def test_inline_json_is_inside_script_block(self, files) -> None:
-        """テンプレート自身のコメントに script 終端文字列があってはならない。
+        """The template's own comments must not contain a script end tag.
 
-        v0.2.0 では JS コメント中に "</script>" という文字列があり、
-        ブラウザで script ブロックがそこで閉じて全テーブルが空になった。
+        In v0.2.0 a JS comment contained the string "</script>", so browsers
+        closed the script block there and every table rendered empty.
         """
         res = make_app(files).get('/')
         assert res.text.count('<script') == res.text.count('</script>')
-        # インライン (src なし) の script ブロック内に終端タグが混入していないこと
+        # No end tag must slip into the inline (no src) script block
         inline_open = res.text.rindex('<script>')
         json_pos = res.text.index('var system_hosts = ')
         assert '</script>' not in res.text[inline_open:json_pos]
 
     def test_main_js_does_not_clobber_embedded_data(self) -> None:
-        """main.js がページ埋め込みデータのグローバルを上書きしないこと。
+        """main.js must not overwrite the globals holding the page's embedded data.
 
-        インラインスクリプトは main.js の前に読み込まれる。main.js 側に
-        "var config = {}" のような初期化子付き宣言があると、埋め込んだ
-        データが空のデフォルト値で上書きされ全テーブルが空になる。
+        The inline script is loaded before main.js. If main.js has a declaration
+        with an initializer such as "var config = {}", the embedded data is
+        overwritten with empty defaults and every table renders empty.
         """
         js = (Path(dnsmasq_webconf.__file__).parent / 'static' / 'main.js').read_text(
             encoding='utf-8'
@@ -183,14 +183,14 @@ class TestEscaping:
             assert char not in text
 
     def test_to_embedded_json_escapes_line_separators(self) -> None:
-        """U+2028/U+2029 は JS では行終端として解釈されるため潰す。"""
+        """U+2028/U+2029 are line terminators in JS, so they are escaped away."""
         text = to_embedded_json({'name': 'a\u2028b\u2029c'})
         assert '\u2028' not in text and '\u2029' not in text
 
     def test_to_embedded_json_survives_lone_surrogates(self) -> None:
-        """不正バイト由来の単独サロゲートでレスポンス生成が 500 にならない。"""
+        """Lone surrogates from invalid bytes do not make response generation 500."""
         text = to_embedded_json({'line': 'dhcp-host=x, \udcff, 1.2.3.4\n'})
-        assert '\udcff' not in text  # \uXXXX にエスケープされている
+        assert '\udcff' not in text  # escaped as \uXXXX
         assert json.loads(text)['line'].endswith('1.2.3.4\n')
 
     def test_to_embedded_json_round_trips(self) -> None:
@@ -199,7 +199,7 @@ class TestEscaping:
 
 
 class TestAuthentication:
-    """BASIC 認証の適用範囲を確認する。"""
+    """Check which routes Basic auth applies to."""
 
     @pytest.fixture
     def auth_app(self, files) -> TestApp:
@@ -209,7 +209,7 @@ class TestAuthentication:
         assert auth_app.get('/', status=401).status_code == 401
 
     def test_save_requires_auth(self, auth_app) -> None:
-        """無認証で設定を書き換えられた旧実装の回帰テスト。"""
+        """Regression: the old implementation allowed rewriting config without auth."""
         res = auth_app.post_json('/api/save', {'hosts': [], 'ignored_hosts': []},
                                  status=401)
         assert res.status_code == 401
@@ -230,10 +230,10 @@ class TestAuthentication:
 
 
 class TestCsrf:
-    """CSRF 対策 (Origin 検証・メソッド制限) を確認する。"""
+    """Check CSRF protection (Origin check, method restriction)."""
 
     def test_cross_origin_post_is_rejected(self, files) -> None:
-        """BASIC 認証はブラウザが自動送信するため、Origin 検証が必要。"""
+        """Browsers send Basic auth automatically, so an Origin check is required."""
         app = make_app(files)
         res = app.post_json(
             '/api/save', {'hosts': [], 'ignored_hosts': []},
@@ -250,12 +250,12 @@ class TestCsrf:
         assert res.status_code == 200
 
     def test_get_is_not_allowed_for_save(self, files) -> None:
-        """旧実装は GET を受理しており CSRF が成立していた。"""
+        """The old implementation accepted GET, which made CSRF possible."""
         make_app(files).get('/api/save', status=405)
 
 
 class TestSave:
-    """保存 API の動作を確認する。"""
+    """Check the behavior of the save API."""
 
     def test_appends_new_host(self, files) -> None:
         app = make_app(files)
@@ -271,12 +271,12 @@ class TestSave:
         assert res.json['applied'] == 1
         body = files['config'].read_text(encoding='utf-8')
         assert 'newbox' in body
-        # 既存の手書き行が保持されていること (非破壊編集)
+        # Existing handwritten lines must be preserved (non-destructive editing)
         assert '# 手書きのコメント' in body
         assert 'dhcp-range=' in body
 
     def test_conflict_is_reported_to_client(self, files) -> None:
-        """旧実装は行不一致を黙って捨て、成功を返していた。"""
+        """The old code silently dropped mismatched lines and reported success."""
         app = make_app(files)
         res = app.post_json('/api/save', {
             'hosts': [{
@@ -319,7 +319,7 @@ class TestSave:
 
 
 class TestIsLoopback:
-    """待ち受けアドレスの判定を確認する。"""
+    """Check classification of listen addresses."""
 
     @pytest.mark.parametrize('host', ['127.0.0.1', '127.0.0.53', '::1', 'localhost'])
     def test_loopback_addresses(self, host: str) -> None:

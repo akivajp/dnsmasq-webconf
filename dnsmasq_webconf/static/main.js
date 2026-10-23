@@ -1,23 +1,23 @@
 // global variables
-// system_hosts / leases / config / read_only / refresh_interval は
-// ページ側のインラインスクリプトが先に埋め込んでいる。
-// ここに初期化子を付けた var 宣言を書くと上書きして全テーブルが
-// 空になってしまうため、未定義のときだけ初期化する
+// system_hosts / leases / config / read_only / refresh_interval are
+// embedded beforehand by the page's inline script.
+// A var declaration with an initializer here would overwrite them and
+// leave every table empty, so initialize only when undefined
 if (typeof system_hosts === 'undefined') { system_hosts = []; }
 if (typeof leases === 'undefined') { leases = []; }
 if (typeof config === 'undefined') { config = {}; }
 if (typeof read_only === 'undefined') { read_only = false; }
 if (typeof refresh_interval === 'undefined') { refresh_interval = 0; }
 var hide_commented = false;
-// Filters の検索ボックスの内容 (小文字化済み)。空文字なら絞り込み無し
+// Contents of the Filters search box (lowercased). Empty string means no filtering
 var filter_text = '';
-// 保存成功後の自動リロード中は離脱警告を出さないためのフラグ
+// Flag to suppress the leave-page warning during the auto-reload after a successful save
 var saving = false;
 var config_mac_set = new Set();
 var leased_addr_set = new Set();
 
-// 対象ファイルが存在しない場合、サーバーは null を埋め込んでくる。
-// 以降の処理で null 参照を起こさないよう、ここで空の形へ正規化する。
+// If a target file does not exist, the server embeds null.
+// Normalize to empty shapes here so later code does not dereference null.
 function normalize_globals() {
     if (!config) { config = {}; }
     if (!Array.isArray(config.hosts)) { config.hosts = []; }
@@ -63,8 +63,8 @@ function match_host(host, cond) {
     return true;
 }
 
-// 検索ボックスの内容でエントリを絞り込む。対象はホスト名・IP・MAC・
-// コメント (hosts 表は names)。大文字小文字を区別しない部分一致
+// Filter entries by the search box contents. Matches hostname, IP, MAC and
+// comment (names for the hosts table). Case-insensitive substring match
 function match_filter(host) {
     if (!filter_text) { return true; }
     var fields = [host.name, host.addr, host.comment, host.mac, host.names];
@@ -117,7 +117,7 @@ $(function () {
         return config.num_lines;
     }
 
-    // 保存結果をユーザーに提示する (従来は成否が画面に出なかった)
+    // Show the save result to the user (previously success/failure was not shown)
     function show_status(level, title, details) {
         var tag_alert = $('<div class="alert">')
             .addClass('alert-' + level)
@@ -125,7 +125,7 @@ $(function () {
         if (details && details.length) {
             var tag_list = $('<ul class="mb-0 mt-2">');
             details.forEach(function (line) {
-                // サーバー応答も信頼せず、テキストノードとして挿入する
+                // Do not trust the server response either; insert it as a text node
                 $('<li>').text(line).appendTo(tag_list);
             });
             tag_alert.append(tag_list);
@@ -321,8 +321,8 @@ $(function () {
                             .data('key', key)
                             .appendTo(tag_td);
                     } else {
-                        // 設定ファイル/リースファイル由来の値は信頼できない入力のため、
-                        // .html() で HTML として解釈させずテキストノードとして追加する
+                        // Values from the config/lease files are untrusted input, so
+                        // append them as text nodes instead of parsing as HTML via .html()
                         val.forEach(function (item, i) {
                             if (i > 0) { tag_td.append($('<br>')); }
                             tag_td.append(document.createTextNode(String(item)));
@@ -391,13 +391,13 @@ $(function () {
         var tag_check = $(e.currentTarget);
         var checked = tag_check.prop('checked');
         hide_commented = checked;
-        // 無効化したエントリは ignored-hosts 側にも存在するため両方に適用する
+        // Disabled entries also exist in ignored-hosts, so apply to both
         update_hosts('dhcp-hosts');
         update_hosts('ignored-hosts');
     });
     $('#filter-text').on('input', function (e) {
         filter_text = $(e.currentTarget).val().trim().toLowerCase();
-        // 4テーブルすべてに同じ絞り込みを適用する
+        // Apply the same filter to all four tables
         update_hosts('dhcp-hosts');
         update_hosts('dhcp-leases');
         update_hosts('ignored-hosts');
@@ -441,8 +441,8 @@ $(function () {
                     return r.status !== 'appended' && r.status !== 'updated';
                 });
                 if (result.status === 'REJECTED') {
-                    // 検証 (dnsmasq --test 等) に失敗した場合。ファイルは
-                    // 変更されていないため、編集内容を保持したまま修正させる
+                    // Validation (dnsmasq --test etc.) failed. The file was
+                    // not modified, so keep the edits and let the user fix them
                     var output = (result.validation && result.validation.output) || '';
                     show_status(
                         'danger',
@@ -454,13 +454,13 @@ $(function () {
                 }
                 if (failed.length === 0) {
                     show_status('success', 'Saved ' + result.applied + ' entries.');
-                    // 追記により行番号がずれるため、保存後は必ず読み直す。
-                    // このリロードでは離脱警告を出させない
+                    // Appending shifts line numbers, so always reload after saving.
+                    // Suppress the leave-page warning for this reload
                     saving = true;
                     window.location.reload();
                     return;
                 }
-                // 衝突した行は書き込まれていないので、変更状態を保持したまま再編集させる
+                // Conflicting lines were not written, so keep the changed state for re-editing
                 show_status(
                     'warning',
                     'Saved ' + result.applied + ' entries, but ' + failed.length
@@ -481,8 +481,8 @@ $(function () {
             },
         });
     });
-    // リース一覧を定期的に再取得する。編集対象の設定テーブルは
-    // 未保存の変更があるため更新せず、閲覧専用のリース一覧だけを差し替える
+    // Periodically re-fetch the lease list. The editable config tables
+    // may have unsaved changes, so only the read-only lease list is replaced
     function refresh_leases() {
         $.getJSON('/api/leases', function (data) {
             if (!Array.isArray(data)) { return; }
@@ -497,7 +497,7 @@ $(function () {
 
     $(document).on('change', '.edit-host', on_change);
     $(document).on('keydown', 'textarea', on_keydown);
-    // 既に静的予約済みの MAC は、リース一覧側で「Add Static」を出さないために使う
+    // MACs already statically reserved; used to hide "Add Static" in the lease list
     for (var host of config.hosts) {
       for (var mac of (host.mac || [])) {
         config_mac_set.add(mac);
@@ -506,8 +506,8 @@ $(function () {
     for (var host of leases) {
       leased_addr_set.add(host.addr);
     }
-    // 未保存の変更 (編集・追加・削除いずれかの印) があるときだけ
-    // ページ離脱を警告する。保存後の自動リロード中は出さない
+    // Warn on leaving the page only when there are unsaved changes
+    // (any edit/add/delete mark). Not shown during the auto-reload after saving
     window.addEventListener('beforeunload', function (e) {
         if (saving) { return; }
         var dirty = config.hosts.concat(config.ignored_hosts).some(function (h) {

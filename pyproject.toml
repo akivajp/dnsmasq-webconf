@@ -36,8 +36,8 @@ dev = [
     "pytest>=7.0",
     "webtest>=3.0",
 ]
-# マルチスレッドの HTTP サーバー (任意)。無くても動作するが、
-# --reload コマンドの実行中に UI が待たされなくなる
+# Multithreaded HTTP server (optional). Works without it, but with it
+# the UI no longer has to wait while the --reload command runs
 server = [
     "waitress>=3.0",
 ]

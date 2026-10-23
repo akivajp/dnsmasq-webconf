@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""設定ファイルの解析・書き出しに関するテスト。"""
+"""Tests for parsing and writing config files."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ SAMPLE_CONFIG = [
 
 
 class TestParseHosts:
-    """``parse_hosts`` の挙動を確認する。"""
+    """Check the behavior of ``parse_hosts``."""
 
     def test_parses_addresses_and_names(self) -> None:
         hosts = parse_hosts(['127.0.0.1\tlocalhost\n', '192.168.1.10 printer p1\n'])
@@ -52,7 +52,7 @@ class TestParseHosts:
 
 
 class TestParseLeases:
-    """``parse_leases`` の挙動を確認する。"""
+    """Check the behavior of ``parse_leases``."""
 
     def test_parses_lease_line(self) -> None:
         leases = parse_leases(
@@ -68,13 +68,13 @@ class TestParseLeases:
         assert parse_leases(['1700000000 aa:bb:cc\n']) == []
 
     def test_tolerates_broken_epoch(self) -> None:
-        """epoch が壊れていても例外を投げず、UI 全体を落とさない。"""
+        """A broken epoch does not raise, so it does not bring down the whole UI."""
         leases = parse_leases(['not-a-number aa:bb:cc:dd:ee:05 1.2.3.4 x id\n'])
         assert leases[0]['timestamp'] == ''
 
 
 class TestParseConfig:
-    """``parse_config`` の挙動を確認する。"""
+    """Check the behavior of ``parse_config``."""
 
     def test_splits_hosts_and_ignored(self) -> None:
         config = parse_config(SAMPLE_CONFIG)
@@ -98,22 +98,22 @@ class TestParseConfig:
         assert host['valid'] is False
 
     def test_ignores_non_dhcp_host_lines(self) -> None:
-        """``dhcp-range`` などの行は解析対象に含めない。"""
+        """Lines such as ``dhcp-range`` are not included in the parse results."""
         config = parse_config(SAMPLE_CONFIG)
         all_lines = [h['line'] for h in config['hosts'] + config['ignored_hosts']]
         assert not any('dhcp-range' in line for line in all_lines)
 
     def test_empty_file_reports_zero_lines(self) -> None:
-        """空ファイルでも num_lines が欠落しない (旧実装のバグ)。"""
+        """num_lines is present even for an empty file (an old implementation bug)."""
         config = parse_config([])
         assert config == {'hosts': [], 'ignored_hosts': [], 'num_lines': 0}
 
 
 class TestHostToLine:
-    """``host_to_line`` の書き出し結果を確認する。"""
+    """Check the output of ``host_to_line``."""
 
     def test_round_trip_preserves_fields(self) -> None:
-        """解析 → 書き出し → 再解析で主要フィールドが保たれる。"""
+        """Key fields survive parse -> write -> re-parse."""
         original = parse_config(SAMPLE_CONFIG)['hosts'][0]
         reparsed = parse_config([host_to_line(original) + '\n'])['hosts'][0]
         for key in ('mac', 'name', 'addr', 'lease', 'comment', 'valid'):
@@ -124,13 +124,13 @@ class TestHostToLine:
         assert line.startswith('#dhcp-host=')
 
     def test_deleted_host_is_double_commented(self) -> None:
-        """削除済みの行は ``##`` として再読み込み時に拾われない。"""
+        """Deleted lines become ``##`` and are not picked up on reload."""
         line = host_to_line({'delete': True, 'name': 'x', 'mac': ['aa:bb:cc:dd:ee:01']})
         assert line.startswith('##dhcp-host=')
         assert parse_config([line + '\n'])['hosts'] == []
 
     def test_id_field_precedes_mac(self) -> None:
-        """``id:`` は dnsmasq の仕様上 MAC より前に出力する必要がある。"""
+        """dnsmasq requires ``id:`` to be emitted before the MAC."""
         line = host_to_line({'extra': ['id:foo'], 'mac': ['aa:bb:cc:dd:ee:01']})
         assert line.index('id:foo') < line.index('aa:bb:cc:dd:ee:01')
 
@@ -141,7 +141,7 @@ class TestHostToLine:
 
 
 class TestApplyChanges:
-    """``apply_changes`` の非破壊編集と楽観的ロックを確認する。"""
+    """Check non-destructive editing and optimistic locking in ``apply_changes``."""
 
     def test_unchanged_hosts_are_skipped(self) -> None:
         config = parse_config(SAMPLE_CONFIG)
@@ -150,7 +150,7 @@ class TestApplyChanges:
         assert lines == SAMPLE_CONFIG
 
     def test_update_rewrites_only_target_line(self) -> None:
-        """変更対象以外の行 (手書きコメントや dhcp-range) は一切変わらない。"""
+        """Non-target lines (handwritten comments, dhcp-range) never change."""
         config = parse_config(SAMPLE_CONFIG)
         host = config['hosts'][0]
         host['addr'] = '192.168.1.99'
@@ -158,7 +158,7 @@ class TestApplyChanges:
         lines, report = apply_changes(SAMPLE_CONFIG, [host])
         assert report[0]['status'] == 'updated'
         assert '192.168.1.99' in lines[2]
-        # 対象行以外が保持されていること
+        # All lines other than the target must be preserved
         for i in (0, 1, 3, 4, 5):
             assert lines[i] == SAMPLE_CONFIG[i]
 
@@ -174,7 +174,7 @@ class TestApplyChanges:
         assert 'newbox' in lines[-1]
 
     def test_conflict_is_reported_not_silently_dropped(self) -> None:
-        """外部でファイルが変わっていたら上書きせず衝突として報告する。"""
+        """If the file changed externally, report a conflict instead of overwriting."""
         config = parse_config(SAMPLE_CONFIG)
         host = config['hosts'][0]
         host['changed'] = True
@@ -182,7 +182,7 @@ class TestApplyChanges:
         modified[2] = 'dhcp-host=aa:bb:cc:dd:ee:01, printer, 192.168.1.55\n'
         lines, report = apply_changes(modified, [host])
         assert report[0]['status'] == 'conflict'
-        # 衝突時は元の行が保持される
+        # On conflict the original line is preserved
         assert lines[2] == modified[2]
 
     def test_out_of_range_line_num_is_reported(self) -> None:
@@ -197,7 +197,7 @@ class TestApplyChanges:
 
 
 class TestFileIO:
-    """ファイル入出力の堅牢性を確認する。"""
+    """Check the robustness of file I/O."""
 
     def test_read_lines_returns_none_for_missing(self, tmp_path) -> None:
         assert read_lines(str(tmp_path / 'nope.conf')) is None
@@ -208,7 +208,7 @@ class TestFileIO:
         target.write_text('old\n', encoding='utf-8')
         write_lines_atomic(str(target), ['new\n'], backup=False)
         assert target.read_text(encoding='utf-8') == 'new\n'
-        # 一時ファイルが残っていないこと
+        # No temp file must be left behind
         assert [p.name for p in tmp_path.iterdir()] == ['dnsmasq.conf']
 
     def test_backup_keeps_previous_content(self, tmp_path) -> None:
@@ -218,7 +218,7 @@ class TestFileIO:
         assert (tmp_path / 'dnsmasq.conf.bak').read_text(encoding='utf-8') == 'old\n'
 
     def test_read_tolerates_invalid_utf8(self, tmp_path) -> None:
-        """不正なバイトが混ざっていても読み取りを継続する。"""
+        """Reading continues even if invalid bytes are mixed in."""
         target = tmp_path / 'dnsmasq.conf'
         target.write_bytes(b'dhcp-host=aa:bb:cc:dd:ee:01, \xff\xfe, 1.2.3.4\n')
         lines = read_lines(str(target))
@@ -227,10 +227,10 @@ class TestFileIO:
     def test_save_preserves_invalid_bytes_in_untouched_lines(
         self, tmp_path
     ) -> None:
-        """不正バイトを含むファイルを保存しても、変更していない行のバイトは無傷。
+        """Saving a file with invalid bytes leaves bytes in untouched lines intact.
 
-        旧実装は errors='replace' で読むため、1 行だけ編集しても
-        全行が U+FFFD に置き換わって書き戻されるデータ破壊が発生した。
+        The old implementation read with errors='replace', so editing even one line
+        corrupted data: every line was written back with U+FFFD replacements.
         """
         target = tmp_path / 'dnsmasq.conf'
         target.write_bytes(
@@ -241,11 +241,11 @@ class TestFileIO:
         lines[0] = 'dhcp-host=aa:bb:cc:dd:ee:01, edited, 1.2.3.9\n'
         write_lines_atomic(str(target), lines, backup=False)
         after = target.read_bytes()
-        # 編集していない 2 行目の不正バイトは元のまま残る
+        # The invalid bytes in the unedited 2nd line remain as they were
         assert b'dhcp-host=aa:bb:cc:dd:ee:02, \xff\xfe, 1.2.3.5\n' in after
 
     def test_save_preserves_file_mode(self, tmp_path) -> None:
-        """mkstemp が 0600 で作るため、既存ファイルの権限を明示的に引き継ぐ。"""
+        """mkstemp creates 0600 files, so explicitly carry over the existing mode."""
         target = tmp_path / 'dnsmasq.conf'
         target.write_text('old\n', encoding='utf-8')
         os.chmod(target, 0o644)
@@ -255,10 +255,10 @@ class TestFileIO:
     def test_falls_back_to_overwrite_when_rename_is_busy(
         self, tmp_path, monkeypatch
     ) -> None:
-        """bind mount されたファイルは rename できない (EBUSY) ので上書きで保存する。
+        """A bind-mounted file cannot be renamed over (EBUSY), so save by overwriting.
 
-        Docker で ``-v /path/dnsmasq.conf:/etc/dnsmasq.conf`` とした場合に
-        保存が必ず失敗していた (Issue #14)。
+        With Docker ``-v /path/dnsmasq.conf:/etc/dnsmasq.conf``, saving always
+        failed (Issue #14).
         """
         target = tmp_path / 'dnsmasq.conf'
         target.write_text('old\n', encoding='utf-8')
@@ -270,10 +270,10 @@ class TestFileIO:
         monkeypatch.setattr(config_module.os, 'replace', busy_replace)
         write_lines_atomic(str(target), ['new\n'], backup=True)
         assert target.read_text(encoding='utf-8') == 'new\n'
-        # 置き換えではなく上書きなので inode は変わらない
+        # Overwritten rather than replaced, so the inode does not change
         assert os.stat(target).st_ino == inode
         assert (tmp_path / 'dnsmasq.conf.bak').read_text(encoding='utf-8') == 'old\n'
-        # 一時ファイルが残っていないこと
+        # No temp file must be left behind
         assert sorted(p.name for p in tmp_path.iterdir()) == [
             'dnsmasq.conf', 'dnsmasq.conf.bak',
         ]
@@ -281,7 +281,7 @@ class TestFileIO:
     def test_other_rename_errors_are_not_swallowed(
         self, tmp_path, monkeypatch
     ) -> None:
-        """フォールバック対象外のエラーはそのまま送出し、既存ファイルも触らない。"""
+        """Non-fallback errors are raised as is and the existing file is left alone."""
         target = tmp_path / 'dnsmasq.conf'
         target.write_text('old\n', encoding='utf-8')
 
@@ -296,13 +296,14 @@ class TestFileIO:
 
     @pytest.mark.skipif(
         hasattr(os, 'geteuid') and os.geteuid() == 0,
-        reason='root はディレクトリの権限を無視して書き込めるため',
+        reason='root can write regardless of directory permissions',
     )
     def test_saves_writable_file_in_read_only_directory(self, tmp_path) -> None:
-        """ファイルは書けるがディレクトリは書けない構成でも保存できる。
+        """Saving works when the file is writable but its directory is not.
 
-        Docker で単一ファイルを bind mount し ``--user`` で動かす場合に相当する
-        (README の手順)。一時ファイルも .bak も作れないが、保存は成功させる。
+        This matches bind-mounting a single file in Docker and running with ``--user``
+        (as in the README). Neither a temp file nor .bak can be created, yet the save
+        must succeed.
         """
         directory = tmp_path / 'etc'
         directory.mkdir()
@@ -316,11 +317,11 @@ class TestFileIO:
             assert os.stat(target).st_mode & 0o777 == 0o644
             assert [p.name for p in directory.iterdir()] == ['dnsmasq.conf']
         finally:
-            # tmp_path の後始末ができるよう権限を戻す
+            # Restore permissions so tmp_path can be cleaned up
             os.chmod(directory, 0o755)
 
     def test_backup_preserves_content_bytes(self, tmp_path) -> None:
-        """バックアップは不正バイトも含めてバイト一致で退避される。"""
+        """The backup is a byte-exact copy, invalid bytes included."""
         target = tmp_path / 'dnsmasq.conf'
         raw = b'dhcp-host=aa:bb:cc:dd:ee:02, \xff\xfe, 1.2.3.5\n'
         target.write_bytes(raw)

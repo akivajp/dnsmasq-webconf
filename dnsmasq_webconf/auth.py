@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""アクセス制御 (BASIC 認証と CSRF 対策)。
+"""Access control (BASIC authentication and CSRF protection).
 
-BASIC 認証の資格情報はブラウザが自動送信するため、認証だけでは
-クロスサイトからの書き込みを防げない。そのため書き込み系エンドポイントでは
-``Origin`` ヘッダによる同一オリジン検証を併用する。
+Browsers send BASIC auth credentials automatically, so authentication alone
+cannot prevent cross-site writes. Write endpoints therefore also verify
+same-origin via the ``Origin`` header.
 """
 
 from __future__ import annotations
@@ -16,31 +16,31 @@ from urllib.parse import urlsplit
 
 
 class Credentials:
-    """BASIC 認証の資格情報を保持する。"""
+    """Holds BASIC authentication credentials."""
 
     def __init__(self, user: str, password: str) -> None:
-        """資格情報を初期化する。
+        """Initialize the credentials.
 
         Args:
-            user: ユーザー名。
-            password: パスワード。
+            user: User name.
+            password: Password.
         """
         self.user = user
         self.password = password
 
     @classmethod
     def parse(cls, spec: str) -> 'Credentials':
-        """``user:password`` 形式の文字列を解析する。
+        """Parse a string of the form ``user:password``.
 
         Args:
-            spec: ``user:password`` 形式の文字列。
-                パスワードに ``:`` を含めてもよい (最初の ``:`` で分割する)。
+            spec: A string of the form ``user:password``.
+                The password may contain ``:`` (split at the first ``:``).
 
         Returns:
-            解析済みの :class:`Credentials`。
+            The parsed :class:`Credentials`.
 
         Raises:
-            ValueError: 形式が不正、またはユーザー名かパスワードが空の場合。
+            ValueError: If the format is invalid, or the user name or password is empty.
         """
         if ':' not in spec:
             raise ValueError('認証情報は "user:password" 形式で指定してください')
@@ -50,21 +50,21 @@ class Credentials:
         return cls(user, password)
 
     def verify(self, user: str | None, password: str | None) -> bool:
-        """資格情報が一致するかを検証する。
+        """Verify whether the given credentials match.
 
-        タイミング攻撃を避けるため :func:`hmac.compare_digest` を用いる。
+        Uses :func:`hmac.compare_digest` to avoid timing attacks.
 
         Args:
-            user: 検証するユーザー名。
-            password: 検証するパスワード。
+            user: User name to verify.
+            password: Password to verify.
 
         Returns:
-            一致すれば ``True``。
+            ``True`` if they match.
         """
         if user is None or password is None:
             return False
-        # compare_digest は非 ASCII の str を受け付けないためバイト列で比較する。
-        # 短絡評価による情報漏洩を避けるため、両方を必ず評価する。
+        # compare_digest rejects non-ASCII str, so compare as bytes.
+        # Always evaluate both to avoid leaking information via short-circuiting.
         user_ok = hmac.compare_digest(user.encode('utf-8'), self.user.encode('utf-8'))
         password_ok = hmac.compare_digest(
             password.encode('utf-8'), self.password.encode('utf-8')
@@ -73,23 +73,23 @@ class Credentials:
 
 
 def is_same_origin(origin: str | None, host: str | None) -> bool:
-    """``Origin`` ヘッダが自ホストと一致するかを判定する。
+    """Determine whether the ``Origin`` header matches this host.
 
     Args:
-        origin: ``Origin`` ヘッダの値。``None`` や空文字ならブラウザ以外からの
-            リクエスト (curl 等) と見なして許可する。
-        host: ``Host`` ヘッダの値。
+        origin: Value of the ``Origin`` header. If ``None`` or empty, the request
+            is treated as coming from a non-browser client (curl, etc.) and allowed.
+        host: Value of the ``Host`` header.
 
     Returns:
-        同一オリジンと見なせる場合に ``True``。
+        ``True`` if the request can be considered same-origin.
     """
     if not origin:
-        # ブラウザはクロスオリジンの書き込みで必ず Origin を送るため、
-        # 欠落している場合は CLI からの利用と判断して通す。
+        # Browsers always send Origin on cross-origin writes, so when it is
+        # missing, treat the request as CLI usage and let it through.
         return True
     if not host:
         return False
-    # "https://example.com:8080" から "example.com:8080" を取り出して比較する
+    # Extract "example.com:8080" from "https://example.com:8080" and compare
     return urlsplit(origin).netloc == host
 
 
@@ -97,25 +97,25 @@ def make_auth_plugin(
     credentials: Credentials | None,
     realm: str = 'dnsmasq-webconf',
 ) -> Callable[..., Any]:
-    """bottle 用の認証デコレータを生成する。
+    """Create an authentication decorator for bottle.
 
     Args:
-        credentials: 要求する資格情報。``None`` なら認証を行わない。
-        realm: BASIC 認証のレルム名。
+        credentials: Required credentials. If ``None``, no authentication is done.
+        realm: Realm name for BASIC authentication.
 
     Returns:
-        ルート関数を包むデコレータ。
+        A decorator that wraps route functions.
     """
-    # bottle は import 時に副作用があるため、利用箇所でのみ読み込む
+    # bottle has side effects on import, so import it only where it is used
     import bottle
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             if credentials is not None:
-                auth = bottle.request.auth  # (user, password) または None
+                auth = bottle.request.auth  # (user, password) or None
                 if not credentials.verify(*(auth or (None, None))):
-                    # WWW-Authenticate を返してブラウザに認証を促す
+                    # Return WWW-Authenticate to prompt the browser to authenticate
                     raise bottle.HTTPError(
                         401,
                         '認証が必要です',
@@ -129,10 +129,10 @@ def make_auth_plugin(
 
 
 def require_same_origin() -> None:
-    """現在のリクエストが同一オリジンであることを確認する。
+    """Ensure the current request is same-origin.
 
     Raises:
-        bottle.HTTPError: クロスオリジンからの要求だった場合 (403)。
+        bottle.HTTPError: If the request is cross-origin (403).
     """
     import bottle
 
