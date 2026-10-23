@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The *Ignored Hosts* table now says what it is for: a blocklist of MAC addresses
+  that dnsmasq never answers (`dhcp-host=<MAC>,ignore`). The README links the two
+  names (#16).
+
 ## [0.3.4] - 2026-10-23
 
 ### Added

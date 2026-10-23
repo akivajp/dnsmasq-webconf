@@ -37,7 +37,8 @@ not try to compete with it. See [Alternatives](#alternatives) below.
   `dhcp-host=` entries.
 - **One-click reservation from a live lease** — see a device in the DHCP lease table,
   press *Add Static*, and it becomes a fixed reservation.
-- **Blocklist management** — mark a MAC as `ignore` so dnsmasq refuses to serve it.
+- **Blocklist management** — the *Ignored Hosts* table marks a MAC as `ignore`, so dnsmasq
+  never answers its DHCP requests.
 - **Per-host notes** — comments are round-tripped as `#` comments in the config file,
   so they stay readable when you edit by hand.
 - **Read-only views** of the DHCP lease table and the system `hosts` file.

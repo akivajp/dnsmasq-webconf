@@ -126,6 +126,11 @@
           Ignored Hosts
         </h2>
         <div class="card-body">
+          {# Explain the table; its name alone does not say it is a blocklist (#16) #}
+          <p class="card-text text-muted">
+            Blocklist: dnsmasq never answers DHCP requests from these MAC addresses
+            (<code>dhcp-host=&lt;MAC&gt;,ignore</code>).
+          </p>
           <table id="ignored-hosts" class="table">
             <thead>
               <tr class="table-primary">

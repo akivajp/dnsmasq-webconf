@@ -135,6 +135,12 @@ class TestIndex:
         assert 'id="filter-text"' in res.text
         assert 'Filter by name, IP, MAC' in res.text
 
+    def test_ignored_hosts_table_explains_its_purpose(self, files) -> None:
+        """The Ignored Hosts table says it is a blocklist (Issue #16)."""
+        res = make_app(files).get('/')
+        assert 'Blocklist: dnsmasq never answers DHCP requests' in res.text
+        assert 'dhcp-host=&lt;MAC&gt;,ignore' in res.text
+
 
 class TestEscaping:
     """Check escaping when embedding untrusted input."""
