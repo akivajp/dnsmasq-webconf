@@ -5,6 +5,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Layout on phones**: wide tables overflowed their card and squeezed the inputs
+  until values such as IP addresses were cut off. Tables now scroll sideways inside
+  their card, inputs keep a readable width, and card headings are smaller on narrow
+  screens (#17, thanks @elad-eyal).
+
 ## [0.3.5] - 2026-10-24
 
 ### Changed

@@ -283,6 +283,8 @@ $(function () {
                 //console.log(key);
                 var val = host[key];
                 var tag_td = $('<td class="text-center align-middle">').appendTo(tag_tr);
+                // Column key for per-column styles (input min-widths, #17)
+                tag_td.attr('data-key', key);
                 if (key == 'control') {
                     if (! config_mac_set.has(host.mac)) {
                         var button_add_static = $('<a class="add-static btn btn-primary text-white">Add Static</a>');
