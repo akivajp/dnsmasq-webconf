@@ -5,6 +5,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Full-page text editor** (*Edit as Text* in the header) for editing the whole config
+  file by hand, comments and layout included. If the file changed on disk after the
+  editor loaded it, saving shows a warning and offers *Overwrite Anyway* or a reload.
+  Saves go through `--test-command`, the `.bak` backup and `--reload-command` like
+  table saves; in `--read-only` mode the editor is view-only. Ctrl+S / Cmd+S saves
+  (#18, thanks @elad-eyal).
+
 ### Fixed
 
 - **Layout on phones**: wide tables overflowed their card and squeezed the inputs

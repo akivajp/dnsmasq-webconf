@@ -24,6 +24,7 @@ from . import __version__
 from .auth import Credentials, make_auth_plugin, require_same_origin
 from .config import (
     apply_changes,
+    file_digest,
     parse_config,
     parse_hosts,
     parse_leases,
@@ -174,6 +175,37 @@ def create_app(settings: Settings) -> bottle.Bottle:
     app = bottle.Bottle()
     require_auth = make_auth_plugin(settings.credentials)
 
+    def write_config(lines: list[str]) -> dict[str, Any] | None:
+        """Write the lines to the config file, validating them first if configured.
+
+        Shared by the table editor and the text editor, so both go through the
+        same ``--test-command`` / backup / atomic replace path.
+
+        Args:
+            lines: All lines of the new config file (each with its newline).
+
+        Returns:
+            ``None`` if the file was written, or the failed validation result
+            (in which case the existing file is untouched).
+        """
+        assert settings.config_file
+        # If a validation command is set, first write to a temp file and
+        # validate that path. The real file is not touched until it passes,
+        # so no rollback is needed on failure.
+        tmp_path: str | None = stage_temp(settings.config_file, lines)
+        try:
+            if settings.test_command:
+                validation = run_command(settings.test_command, path=tmp_path)
+                if validation['returncode'] != 0:
+                    return validation
+            promote_staged(settings.config_file, tmp_path, backup=settings.backup)
+            tmp_path = None
+        finally:
+            # Always clean up a temp file that was not promoted
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+        return None
+
     @app.route('/')
     @require_auth
     def index() -> str:
@@ -198,6 +230,8 @@ def create_app(settings: Settings) -> bottle.Bottle:
             has_hosts=hosts is not None,
             has_leases=leases is not None,
             has_config=config is not None,
+            # The text editor can also create a missing file, so it only needs a path
+            has_text_editor=bool(settings.config_file),
             read_only=settings.read_only,
             refresh_interval=settings.refresh_interval,
             version=__version__,
@@ -208,6 +242,34 @@ def create_app(settings: Settings) -> bottle.Bottle:
             template_lookup=[VIEW_DIR],
             # Enable Jinja2 autoescaping as defense in depth.
             # JSON variables get | safe, as to_embedded_json() already escaped them.
+            template_settings={'autoescape': True},
+            **context,
+        )
+
+    @app.route('/edit')
+    @require_auth
+    def edit() -> str:
+        """Render the full-page text editor for the config file (#18)."""
+        if not settings.config_file:
+            raise bottle.HTTPError(404, 'No config file is specified')
+        # Take the digest before reading, so a write in between shows up as a
+        # conflict on save instead of being silently overwritten
+        digest = file_digest(settings.config_file)
+        lines = read_lines(settings.config_file)
+        context = dict(
+            # The text goes through JSON, not straight into the HTML, so that
+            # bytes kept by surrogateescape do not break the UTF-8 response
+            text_json=to_embedded_json(''.join(lines or [])),
+            digest_json=to_embedded_json(digest),
+            config_file=settings.config_file,
+            exists=lines is not None,
+            read_only=settings.read_only,
+            version=__version__,
+            timestamp=datetime.datetime.now().strftime('%y/%m/%d-%H:%M:%S'),
+        )
+        return bottle.jinja2_template(
+            'edit.html.j2',
+            template_lookup=[VIEW_DIR],
             template_settings={'autoescape': True},
             **context,
         )
@@ -262,30 +324,15 @@ def create_app(settings: Settings) -> bottle.Bottle:
             applied = len(report) - len(conflicts)
             result: dict[str, Any] = {'applied': applied, 'report': report}
 
-            # If a validation command is set, first write to a temp file and
-            # validate that path. The real file is not touched until it passes,
-            # so no rollback is needed on failure.
-            tmp_path: str | None = stage_temp(settings.config_file, lines) if report else None
-            try:
-                if settings.test_command and tmp_path:
-                    validation = run_command(settings.test_command, path=tmp_path)
-                    if validation['returncode'] != 0:
-                        # Abort the write if validation fails (existing file is untouched)
-                        return json.dumps({
-                            'status': 'REJECTED',
-                            'applied': 0,
-                            'report': report,
-                            'validation': validation,
-                        }, ensure_ascii=False)
-                if tmp_path:
-                    promote_staged(
-                        settings.config_file, tmp_path, backup=settings.backup
-                    )
-                    tmp_path = None
-            finally:
-                # Always clean up a temp file that was not promoted
-                if tmp_path and os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
+            validation = write_config(lines)
+            if validation is not None:
+                # Abort the write if validation fails (existing file is untouched)
+                return json.dumps({
+                    'status': 'REJECTED',
+                    'applied': 0,
+                    'report': report,
+                    'validation': validation,
+                }, ensure_ascii=False)
 
             result['status'] = 'OK' if applied else 'PARTIAL'
             # Reload dnsmasq only if changes were actually written
@@ -296,6 +343,56 @@ def create_app(settings: Settings) -> bottle.Bottle:
         return json.dumps({
             'status': 'OK', 'applied': 0, 'report': [],
         }, ensure_ascii=False)
+
+    @app.route('/api/save-text', method='POST')
+    @require_auth
+    def save_text() -> str:
+        """Replace the whole config file with the text editor's content."""
+        require_same_origin()
+        bottle.response.headers['Content-Type'] = 'application/json'
+        bottle.response.headers['Cache-Control'] = 'no-store'
+
+        if settings.read_only:
+            raise bottle.HTTPError(403, 'The server is running in read-only mode')
+        if not settings.config_file:
+            raise bottle.HTTPError(400, 'No config file is specified')
+
+        data = bottle.request.json
+        if not isinstance(data, dict) or not isinstance(data.get('text'), str):
+            raise bottle.HTTPError(400, 'A JSON body with a "text" string is required')
+        text: str = data['text']
+        base_digest = str(data.get('digest') or '')
+        force = data.get('force') is True
+
+        # Optimistic locking: refuse if the file changed since the editor loaded
+        # it, unless the user chose to overwrite anyway
+        current_digest = file_digest(settings.config_file)
+        if current_digest != base_digest and not force:
+            return json.dumps({'status': 'CONFLICT'}, ensure_ascii=False)
+
+        lines = text.splitlines(keepends=True)
+        # Don't touch the file (or reload) if the content is the same
+        if lines == (read_lines(settings.config_file) or []) and current_digest:
+            return json.dumps(
+                {'status': 'OK', 'changed': False, 'digest': current_digest},
+                ensure_ascii=False,
+            )
+
+        validation = write_config(lines)
+        if validation is not None:
+            return json.dumps(
+                {'status': 'REJECTED', 'validation': validation}, ensure_ascii=False,
+            )
+        result: dict[str, Any] = {
+            'status': 'OK',
+            'changed': True,
+            # The editor keeps this as its new base, so it can save again
+            # without reloading the page
+            'digest': file_digest(settings.config_file),
+        }
+        if settings.reload_command:
+            result['reload'] = run_command(settings.reload_command)
+        return json.dumps(result, ensure_ascii=False)
 
     return app
 

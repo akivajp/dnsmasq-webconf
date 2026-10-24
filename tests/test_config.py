@@ -12,6 +12,7 @@ import pytest
 from dnsmasq_webconf import config as config_module
 from dnsmasq_webconf.config import (
     apply_changes,
+    file_digest,
     host_to_line,
     parse_config,
     parse_hosts,
@@ -202,6 +203,16 @@ class TestFileIO:
     def test_read_lines_returns_none_for_missing(self, tmp_path) -> None:
         assert read_lines(str(tmp_path / 'nope.conf')) is None
         assert read_lines(None) is None
+
+    def test_file_digest_tracks_content(self, tmp_path) -> None:
+        target = tmp_path / 'dnsmasq.conf'
+        assert file_digest(str(target)) == ''
+        assert file_digest(None) == ''
+        target.write_bytes(b'a\n')
+        first = file_digest(str(target))
+        assert len(first) == 64
+        target.write_bytes(b'b\n')
+        assert file_digest(str(target)) != first
 
     def test_write_is_atomic_and_leaves_no_temp_file(self, tmp_path) -> None:
         target = tmp_path / 'dnsmasq.conf'

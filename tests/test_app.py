@@ -324,6 +324,133 @@ class TestSave:
         assert backup.read_text(encoding='utf-8') == CONFIG_BODY
 
 
+class TestTextEditor:
+    """Check the full-page text editor and its save API (Issue #18)."""
+
+    @staticmethod
+    def load_digest(app: TestApp) -> str:
+        """Open the editor page and return the digest embedded in it."""
+        res = app.get('/edit')
+        match = re.search(r'var config_digest = "([0-9a-f]*)";', res.text)
+        assert match is not None
+        return match.group(1)
+
+    def test_editor_embeds_file_text(self, files) -> None:
+        res = make_app(files).get('/edit')
+        assert res.status_code == 200
+        assert '/static/edit.js' in res.text
+        # The text is embedded as escaped JSON, not as raw HTML
+        assert to_embedded_json(CONFIG_BODY) in res.text
+        assert 'id="save-text"' in res.text
+
+    def test_main_page_links_to_editor(self, files) -> None:
+        assert 'href="/edit"' in make_app(files).get('/').text
+
+    def test_read_only_editor_has_no_save_button(self, files) -> None:
+        res = make_app(files, read_only=True).get('/edit')
+        assert 'id="save-text"' not in res.text
+        assert 'readonly' in res.text
+
+    def test_saves_whole_text(self, files) -> None:
+        app = make_app(files)
+        digest = self.load_digest(app)
+        new_text = CONFIG_BODY + '# added by hand\n'
+        res = app.post_json('/api/save-text', {'text': new_text, 'digest': digest})
+        assert res.json['status'] == 'OK'
+        assert res.json['changed'] is True
+        assert files['config'].read_text(encoding='utf-8') == new_text
+        # The returned digest lets the editor save again without reloading
+        assert res.json['digest'] == self.load_digest(app)
+        backup = files['config'].with_suffix('.conf.bak')
+        assert backup.read_text(encoding='utf-8') == CONFIG_BODY
+
+    def test_external_change_is_a_conflict(self, files) -> None:
+        """A file changed after the editor loaded it is not overwritten silently."""
+        app = make_app(files)
+        digest = self.load_digest(app)
+        files['config'].write_text(CONFIG_BODY + '# other edit\n', encoding='utf-8')
+        res = app.post_json('/api/save-text', {'text': 'mine\n', 'digest': digest})
+        assert res.json['status'] == 'CONFLICT'
+        assert files['config'].read_text(encoding='utf-8').endswith('# other edit\n')
+
+    def test_force_overwrites_after_conflict(self, files) -> None:
+        app = make_app(files)
+        digest = self.load_digest(app)
+        files['config'].write_text('# other edit\n', encoding='utf-8')
+        res = app.post_json(
+            '/api/save-text', {'text': 'mine\n', 'digest': digest, 'force': True},
+        )
+        assert res.json['status'] == 'OK'
+        assert files['config'].read_text(encoding='utf-8') == 'mine\n'
+
+    def test_unchanged_text_does_not_write_or_reload(self, files, tmp_path) -> None:
+        marker = tmp_path / 'reloaded'
+        app = make_app(files, reload_command=f'touch {marker}')
+        digest = self.load_digest(app)
+        res = app.post_json('/api/save-text', {'text': CONFIG_BODY, 'digest': digest})
+        assert res.json['changed'] is False
+        assert not marker.exists()
+        assert not files['config'].with_suffix('.conf.bak').exists()
+
+    def test_reload_runs_after_save(self, files, tmp_path) -> None:
+        marker = tmp_path / 'reloaded'
+        app = make_app(files, reload_command=f'touch {marker}')
+        digest = self.load_digest(app)
+        res = app.post_json('/api/save-text', {'text': 'new\n', 'digest': digest})
+        assert res.json['reload']['returncode'] == 0
+        assert marker.exists()
+
+    def test_failed_validation_leaves_file_untouched(self, files) -> None:
+        app = make_app(files, test_command='false')
+        digest = self.load_digest(app)
+        res = app.post_json('/api/save-text', {'text': 'broken\n', 'digest': digest})
+        assert res.json['status'] == 'REJECTED'
+        assert files['config'].read_text(encoding='utf-8') == CONFIG_BODY
+
+    def test_creates_missing_file(self, files) -> None:
+        files['config'].unlink()
+        app = make_app(files)
+        assert self.load_digest(app) == ''
+        res = app.post_json('/api/save-text', {'text': 'new\n', 'digest': ''})
+        assert res.json['status'] == 'OK'
+        assert files['config'].read_text(encoding='utf-8') == 'new\n'
+
+    def test_preserves_invalid_utf8_bytes(self, files) -> None:
+        """Bytes kept by surrogateescape round-trip through the JSON API."""
+        files['config'].write_bytes(b'# \xff\xfe\n')
+        app = make_app(files)
+        digest = self.load_digest(app)
+        text = b'# \xff\xfe\n'.decode('utf-8', 'surrogateescape') + 'more\n'
+        res = app.post(
+            '/api/save-text',
+            json.dumps({'text': text, 'digest': digest}),
+            content_type='application/json',
+        )
+        assert res.json['status'] == 'OK'
+        assert files['config'].read_bytes() == b'# \xff\xfe\nmore\n'
+
+    def test_read_only_mode_refuses_write(self, files) -> None:
+        app = make_app(files, read_only=True)
+        app.post_json('/api/save-text', {'text': 'x\n', 'digest': ''}, status=403)
+        assert files['config'].read_text(encoding='utf-8') == CONFIG_BODY
+
+    def test_cross_origin_post_is_rejected(self, files) -> None:
+        app = make_app(files)
+        app.post_json(
+            '/api/save-text', {'text': 'x\n', 'digest': ''},
+            headers={'Origin': 'http://evil.example'}, status=403,
+        )
+        assert files['config'].read_text(encoding='utf-8') == CONFIG_BODY
+
+    def test_requires_auth(self, files) -> None:
+        app = make_app(files, credentials=Credentials('admin', 'secret'))
+        app.get('/edit', status=401)
+        app.post_json('/api/save-text', {'text': 'x\n', 'digest': ''}, status=401)
+
+    def test_text_must_be_a_string(self, files) -> None:
+        make_app(files).post_json('/api/save-text', {'text': ['x']}, status=400)
+
+
 class TestIsLoopback:
     """Check classification of listen addresses."""
 

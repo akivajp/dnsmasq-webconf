@@ -43,6 +43,12 @@
         <span class="navbar-text text-white-50 small">
           v{{ version }}{% if read_only %} &middot; read-only{% endif %}
         </span>
+        {% if has_text_editor %}
+        {# Whole-file editor that keeps the file exactly as written (#18) #}
+        <a class="btn btn-sm btn-outline-light ml-auto" href="/edit">
+          {{ 'View' if read_only else 'Edit' }} as Text
+        </a>
+        {% endif %}
       </nav>
     </div>
 

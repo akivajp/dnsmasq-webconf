@@ -41,6 +41,9 @@ not try to compete with it. See [Alternatives](#alternatives) below.
   never answers its DHCP requests.
 - **Per-host notes** — comments are round-tripped as `#` comments in the config file,
   so they stay readable when you edit by hand.
+- **Full-page text editor** — *Edit as Text* opens the whole config file for editing
+  by hand, comments and layout included. If the file changed on disk since you opened
+  it, saving warns you and lets you overwrite anyway or reload.
 - **Read-only views** of the DHCP lease table and the system `hosts` file.
 - **Optional reload hook** — run `systemctl reload dnsmasq` (or anything else) after a
   successful save.
@@ -241,6 +244,13 @@ rather than a public issue.
 
 Deleted entries are written as `##dhcp-host=...` rather than being removed, so you can
 always recover them by hand.
+
+The text editor (*Edit as Text*) saves the whole file instead. It remembers a SHA-256
+hash of the file as it was when you opened it; if the file has changed since, nothing is
+written until you choose *Overwrite Anyway*. Its saves go through the same
+`--test-command`, `.bak` and `--reload-command` steps. The browser's text box turns
+Windows (CRLF) line endings into LF, so a file saved from the editor ends up with LF
+line endings.
 
 ## Scope and limitations
 

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    {# Serve only CSS/JS bundled with the package, so it works on an isolated LAN #}
+    <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
+    <style>
+      /* Let the textarea take all the height left under the toolbar */
+      #config-text {
+        flex: 1 1 auto;
+        min-height: 16rem;
+        resize: none;
+        font-size: 0.875rem;
+        white-space: pre;
+        overflow-wrap: normal;
+        overflow: auto;
+      }
+    </style>
+
+    <title>Edit {{ config_file }} - Dnsmasq Configurator</title>
+  </head>
+  <body class="d-flex flex-column vh-100">
+    <script src="/static/vendor/jquery.min.js"></script>
+    <script>
+      // Escaped by to_embedded_json(), like the data on the main page.
+      // Note: do not write the end tag even in a JS comment (it closes the block).
+      var config_text = {{ text_json | safe }};
+      var config_digest = {{ digest_json | safe }};
+      var read_only = {{ 'true' if read_only else 'false' }};
+    </script>
+    <script src="/static/edit.js?{{ timestamp }}"></script>
+
+    <div class="container-fluid">
+      <nav class="navbar navbar-dark bg-primary">
+        <h1 class="h1 navbar-brand">Dnsmasq Configurator</h1>
+        <span class="navbar-text text-white-50 small">
+          v{{ version }}{% if read_only %} &middot; read-only{% endif %}
+        </span>
+      </nav>
+    </div>
+
+    <div class="container-fluid d-flex flex-column flex-grow-1 my-2">
+      <div class="d-flex flex-wrap align-items-center mb-2">
+        <h2 class="h5 mb-0 mr-auto text-break">
+          {{ config_file }}{% if not exists %} <small class="text-muted">(new file)</small>{% endif %}
+        </h2>
+        <div class="mt-1">
+          <a class="btn btn-outline-secondary" href="/">Back to Tables</a>
+          {% if not read_only %}
+          <a id="save-text" class="btn btn-primary text-white disabled">Save</a>
+          {% endif %}
+        </div>
+      </div>
+      {# Area that shows the save result (success / conflict / validation error) #}
+      <div id="save-status"></div>
+      <textarea id="config-text" class="form-control text-monospace"
+                spellcheck="false" autocapitalize="off" autocomplete="off"
+                {% if read_only %}readonly{% endif %}></textarea>
+    </div>
+  </body>
+</html>

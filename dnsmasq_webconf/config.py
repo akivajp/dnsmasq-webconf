@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import datetime
 import errno
+import hashlib
 import logging
 import os
 import re
@@ -252,6 +253,28 @@ def read_lines(path: str | None) -> list[str] | None:
     # U+FFFD as well, since all lines are rewritten on save.
     with open(path, encoding='utf-8', errors='surrogateescape') as fobj:
         return fobj.readlines()
+
+
+def file_digest(path: str | None) -> str:
+    """Return the SHA-256 hex digest of a file's raw bytes.
+
+    Used by the text editor to tell whether the file changed on disk since it
+    was loaded (optimistic locking for whole-file saves).
+
+    Args:
+        path: Path of the file. ``None`` or a nonexistent file is allowed.
+
+    Returns:
+        The hex digest, or an empty string if the file does not exist.
+    """
+    if not path or not os.path.isfile(path):
+        return ''
+    digest = hashlib.sha256()
+    with open(path, 'rb') as fobj:
+        # Read in chunks so a large file is not loaded at once
+        for chunk in iter(lambda: fobj.read(65536), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def stage_temp(path: str, lines: list[str]) -> str:

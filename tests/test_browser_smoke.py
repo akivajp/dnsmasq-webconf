@@ -14,6 +14,7 @@ Skipped where headless Chrome / Chromium is not available.
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import threading
@@ -145,3 +146,21 @@ class TestBrowserSmoke:
         )
         # Page output is not kept in a temp area, so save the dump for inspection
         (tmp_path / 'rendered.html').write_text(dom, encoding='utf-8')
+    def test_text_editor_shows_file(self, server: str) -> None:
+        """The text editor page (#18) puts the config text into its textarea."""
+        browser = _find_browser()
+        assert browser is not None
+        dom = subprocess.run(
+            [
+                browser, '--headless', '--disable-gpu', '--no-sandbox',
+                '--virtual-time-budget=5000', '--dump-dom', server + 'edit',
+            ],
+            capture_output=True, text=True, timeout=60, check=True,
+        ).stdout
+        # edit.js sets the textarea's default value, which --dump-dom serializes
+        match = re.search(r'<textarea id="config-text"[^>]*>(.*?)</textarea>', dom, re.S)
+        assert match is not None, 'textarea not found in the rendered page'
+        assert 'dhcp-host=aa:bb:cc:dd:ee:02, nas, 192.168.1.11' in match.group(1), (
+            'the config text was not loaded into the editor; '
+            'embedded data may be clobbered or edit.js failed to run'
+        )
