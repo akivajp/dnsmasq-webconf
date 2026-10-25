@@ -54,6 +54,10 @@ DNS・DHCP・広告ブロックを一体で提供するアプライアンスが�
 - **データベース・ビルド手順・JS ツールチェーン不要** — Python の依存は 2 つだけ。
   CSS/JS はすべて同梱しているため、インターネットに接続できない閉域ネットワークでも動作します
 
+テキストエディタ (*Edit as Text*) の画面:
+
+![テキストエディタ](https://raw.githubusercontent.com/akivajp/dnsmasq-webconf/master/docs/screenshot-editor.png)
+
 ## インストール
 
 ### PyPI から (推奨)
@@ -277,6 +281,14 @@ uv run pytest
 
 ```shell
 scripts/update-vendor.sh
+```
+
+`docs/` のスクリーンショットをデモデータから撮り直す場合 (Chrome または Chromium が必要。
+リリースタグごとに *Update screenshots* ワークフローも同じ処理を行い、
+変化があればプルリクエストを作成します):
+
+```shell
+uv run python scripts/update-screenshot.py
 ```
 
 コントリビューションを歓迎します。

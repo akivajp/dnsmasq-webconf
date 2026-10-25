@@ -58,6 +58,10 @@ not try to compete with it. See [Alternatives](#alternatives) below.
 - **No database, no build step, no JavaScript toolchain.** Two Python dependencies,
   and all CSS/JS is bundled — it works on an isolated network with no internet access.
 
+The text editor (*Edit as Text*):
+
+![Text editor](https://raw.githubusercontent.com/akivajp/dnsmasq-webconf/master/docs/screenshot-editor.png)
+
 ## Installation
 
 ### From PyPI (recommended)
@@ -284,6 +288,14 @@ To refresh the bundled jQuery/Bootstrap files and their checksum manifest:
 
 ```shell
 scripts/update-vendor.sh
+```
+
+To regenerate the screenshots in `docs/` from demo data (needs Chrome or Chromium;
+the *Update screenshots* workflow also does this for each release tag and opens a
+pull request when they change):
+
+```shell
+uv run python scripts/update-screenshot.py
 ```
 
 Contributions are welcome — please keep the "don't rewrite lines the user didn't

@@ -5,6 +5,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The README screenshot shows the current UI, and a second one shows the text editor.
+  `scripts/update-screenshot.py` regenerates both from demo data with headless Chrome,
+  and the *Update screenshots* workflow runs it for each release tag and opens a pull
+  request when they change (#19, thanks @elad-eyal).
+
 ## [0.4.0] - 2026-10-24
 
 ### Added
