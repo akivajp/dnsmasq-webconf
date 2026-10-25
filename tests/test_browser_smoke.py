@@ -16,9 +16,13 @@ from __future__ import annotations
 
 import re
 import shutil
+import struct
 import subprocess
+import sys
 import threading
+import zlib
 from html.parser import HTMLParser
+from pathlib import Path
 from typing import Iterator
 
 import pytest
@@ -164,3 +168,32 @@ class TestBrowserSmoke:
             'the config text was not loaded into the editor; '
             'embedded data may be clobbered or edit.js failed to run'
         )
+
+    def test_screenshot_script(self, tmp_path) -> None:
+        """scripts/update-screenshot.py writes both README screenshots (#19)."""
+        script = Path(__file__).resolve().parent.parent / 'scripts' / 'update-screenshot.py'
+        if not script.is_file():
+            pytest.skip('scripts/ is not part of the sdist')
+        subprocess.run(
+            [sys.executable, str(script), '--output-dir', str(tmp_path)],
+            capture_output=True, timeout=180, check=True,
+        )
+        for name, min_height in (('screenshot.png', 1000), ('screenshot-editor.png', 400)):
+            data = (tmp_path / name).read_bytes()
+            assert data[:8] == b'\x89PNG\r\n\x1a\n', f'{name} is not a PNG file'
+            width, height, depth, color = struct.unpack('>IIBB', data[16:26])
+            assert width == 1400
+            # The main page is captured whole, so it is taller than one screen
+            assert height >= min_height, f'{name} is only {height}px tall'
+            # The cropped image data must hold exactly `height` rows
+            # (8-bit RGB or RGBA, as Chrome writes them)
+            assert depth == 8 and color in (2, 6)
+            channels = 3 if color == 2 else 4
+            idat = b''
+            pos = 8
+            while pos < len(data):
+                (length,) = struct.unpack('>I', data[pos:pos + 4])
+                if data[pos + 4:pos + 8] == b'IDAT':
+                    idat += data[pos + 8:pos + 8 + length]
+                pos += 12 + length
+            assert len(zlib.decompress(idat)) == height * (1 + width * channels)
